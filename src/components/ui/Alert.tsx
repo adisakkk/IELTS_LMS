@@ -9,6 +9,11 @@ interface AlertProps {
   className?: string;
 }
 
+/**
+ * Alert — soft, tonal inline notice.
+ * Replaces harsh left-border-4 with a refined tinted surface,
+ * subtle icon chip, and soft rounded corners.
+ */
 export function Alert({
   title,
   children,
@@ -18,46 +23,56 @@ export function Alert({
 }: AlertProps) {
   const variants = {
     info: {
-      bg: 'bg-blue-50',
-      border: 'border-blue-800',
+      surface: 'bg-blue-100/60 border-blue-200/70',
       text: 'text-blue-900',
-      icon: <Info className="text-blue-800" size={20} />,
+      chip: 'bg-white text-blue-700 ring-1 ring-blue-200',
+      icon: Info,
     },
     warning: {
-      bg: 'bg-amber-50',
-      border: 'border-amber-700',
+      surface: 'bg-amber-100/70 border-amber-200',
       text: 'text-amber-900',
-      icon: <AlertTriangle className="text-amber-700" size={20} />,
+      chip: 'bg-white text-amber-700 ring-1 ring-amber-200',
+      icon: AlertTriangle,
     },
     error: {
-      bg: 'bg-red-50',
-      border: 'border-red-800',
+      surface: 'bg-red-100/70 border-red-200',
       text: 'text-red-900',
-      icon: <XCircle className="text-red-800" size={20} />,
+      chip: 'bg-white text-red-700 ring-1 ring-red-200',
+      icon: XCircle,
     },
     success: {
-      bg: 'bg-green-50',
-      border: 'border-green-800',
+      surface: 'bg-green-100/70 border-green-200',
       text: 'text-green-900',
-      icon: <CheckCircle className="text-green-800" size={20} />,
+      chip: 'bg-white text-green-700 ring-1 ring-green-200',
+      icon: CheckCircle,
     },
   };
 
   const style = variants[variant];
+  const Icon = style.icon;
 
   return (
-    <div className={`flex gap-3 p-4 rounded-sm border-l-4 shadow-sm ${style.bg} ${style.border} ${style.text} ${className}`}>
-      <div className="flex-shrink-0 mt-0.5">{style.icon}</div>
-      <div className="flex-1">
-        {title && <h4 className="font-semibold mb-1">{title}</h4>}
-        <div className="text-sm leading-relaxed">{children}</div>
+    <div
+      role="status"
+      className={`flex gap-3 p-4 rounded-xl border ${style.surface} ${style.text} ${className}`}
+    >
+      <div
+        className={`flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center ${style.chip}`}
+        aria-hidden="true"
+      >
+        <Icon size={16} strokeWidth={2} />
+      </div>
+      <div className="flex-1 min-w-0 pt-0.5">
+        {title && <p className="font-semibold text-sm leading-tight mb-0.5">{title}</p>}
+        <div className="text-sm leading-relaxed opacity-90">{children}</div>
       </div>
       {onClose && (
         <button
           onClick={onClose}
-          className="flex-shrink-0 p-1 hover:bg-black/5 rounded-full transition-colors h-fit"
+          className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/60 transition-colors"
+          aria-label="Dismiss"
         >
-          <X size={16} />
+          <X size={14} />
         </button>
       )}
     </div>

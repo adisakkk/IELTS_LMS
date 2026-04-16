@@ -54,33 +54,44 @@ export function StudentFooter({
     return count + (answer !== undefined && answer !== '' ? 1 : 0);
   }, 0);
 
+  const progressPercent = totalQuestions === 0 ? 0 : (answeredCount / totalQuestions) * 100;
+
   return (
     <footer
-      className="border-t border-gray-200 bg-white flex flex-col flex-shrink-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] max-h-32 md:max-h-28 lg:max-h-24"
+      className="border-t border-gray-200 bg-white flex flex-col flex-shrink-0 z-10 max-h-32 md:max-h-28 lg:max-h-24"
       role="contentinfo"
       aria-label="Question navigation and progress"
     >
-      <div className="flex items-center justify-between px-2 md:px-3 lg:px-4 py-1.5 md:py-2">
-        <div className="flex items-center gap-2 md:gap-3 flex-1 overflow-x-auto">
-          <div className="flex items-center gap-1 md:gap-1.5 px-1.5 md:px-2 py-0.5 bg-gray-50 rounded-sm flex-shrink-0">
-            <span className="text-[9px] md:text-[10px] lg:text-[11px] font-black text-gray-900">
-              {answeredCount}/{totalQuestions}
-            </span>
-          </div>
-          {answeredCount === totalQuestions ? (
-            <Button
-              variant="primary"
-              size="sm"
-              className="min-w-[60px] md:min-w-[80px] shadow-md flex-shrink-0"
-              onClick={onSubmit}
-            >
-              Finish
-            </Button>
-          ) : null}
-        </div>
+      {/* Progress strip */}
+      <div className="h-1 w-full bg-gray-100" aria-hidden="true">
+        <div
+          className="h-full bg-gray-900 transition-all duration-500 ease-out"
+          style={{ width: `${progressPercent}%` }}
+        />
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3 px-2 md:px-3 lg:px-4 pb-1.5 md:pb-2 overflow-x-auto">
+      <div className="flex items-center justify-between px-3 md:px-4 lg:px-5 py-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-mono text-sm font-medium text-gray-900 tabular-nums">{answeredCount}</span>
+            <span className="text-xs text-gray-400">/</span>
+            <span className="font-mono text-sm text-gray-500 tabular-nums">{totalQuestions}</span>
+            <span className="text-xs text-gray-500 ml-1">answered</span>
+          </div>
+        </div>
+
+        {answeredCount === totalQuestions ? (
+          <Button variant="primary" size="sm" className="flex-shrink-0" onClick={onSubmit}>
+            Finish exam
+          </Button>
+        ) : (
+          <span className="text-xs text-gray-500 font-mono tabular-nums">
+            {totalQuestions - answeredCount} remaining
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 md:gap-3 px-3 md:px-4 lg:px-5 pb-2 overflow-x-auto no-scrollbar">
         {passageGroups.map(({ groupId, groupQuestions, index }) => {
           const isActiveGroup = groupQuestions.some(
             (question) => question.id === currentQuestionId,
@@ -89,10 +100,10 @@ export function StudentFooter({
           return (
             <div
               key={groupId}
-              className="flex items-center gap-1 md:gap-1.5 lg:gap-2 whitespace-nowrap flex-shrink-0"
+              className="flex items-center gap-2 whitespace-nowrap flex-shrink-0"
             >
               {isActiveGroup ? (
-                <div className="flex items-center gap-0.5 md:gap-1">
+                <div className="flex items-center gap-1">
                   {groupQuestions.map((question) => {
                     const globalIndex =
                       questions.findIndex((candidate) => candidate.id === question.id) + 1;
@@ -107,31 +118,46 @@ export function StudentFooter({
                       <button
                         key={question.id}
                         onClick={() => onNavigate(question.id)}
-                        className={`relative text-[8px] md:text-[9px] lg:text-[10px] flex items-center justify-center min-w-[20px] md:min-w-[24px] lg:min-w-[28px] h-5 md:h-6 lg:h-7 px-0.5 md:px-1 rounded-sm font-bold border ${
+                        className={`relative text-[11px] flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-lg font-medium border transition-colors ${
                           isCurrent
-                            ? 'bg-blue-800 border-blue-800 text-white'
+                            ? 'bg-gray-900 border-gray-900 text-white'
                             : isFlagged
-                              ? 'bg-amber-100 border-amber-700 text-amber-900'
+                              ? 'bg-amber-100 border-amber-200 text-amber-900 hover:bg-amber-200'
                               : isAnswered
-                                ? 'bg-blue-200 border-blue-500 text-blue-800'
-                                : 'bg-white border-gray-100 text-gray-700'
+                                ? 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'
+                                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                         }`}
+                        aria-label={`Question ${globalIndex}${isAnswered ? ', answered' : ''}${isFlagged ? ', flagged' : ''}`}
+                        aria-current={isCurrent ? 'true' : undefined}
                       >
-                        {question.isMulti
-                          ? `${globalIndex}-${globalIndex + question.correctCount - 1}`
-                          : globalIndex}
+                        <span className="font-mono tabular-nums">
+                          {question.isMulti
+                            ? `${globalIndex}-${globalIndex + question.correctCount - 1}`
+                            : globalIndex}
+                        </span>
                         {isFlagged && !isCurrent ? (
-                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-700 rounded-full border border-white"></div>
+                          <span
+                            className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white"
+                            aria-hidden="true"
+                          />
                         ) : null}
                       </button>
                     );
                   })}
                 </div>
               ) : (
-                <div className="flex items-center gap-1 md:gap-1.5">
-                  <div className="w-8 md:w-10 lg:w-12 h-1 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
+                <button
+                  onClick={() => {
+                    const first = groupQuestions[0];
+                    if (first) onNavigate(first.id);
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                  aria-label={`Jump to passage ${index + 1}`}
+                >
+                  <span className="text-[10px] font-medium text-gray-500">§{index + 1}</span>
+                  <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden" aria-hidden="true">
                     <div
-                      className="h-full bg-blue-800"
+                      className="h-full bg-gray-900 transition-all duration-300"
                       style={{
                         width: `${
                           (groupQuestions.filter((question) => {
@@ -144,9 +170,9 @@ export function StudentFooter({
                           100
                         }%`,
                       }}
-                    ></div>
+                    />
                   </div>
-                  <span className="text-[7px] md:text-[8px] lg:text-[9px] font-bold text-gray-500">
+                  <span className="text-[10px] font-mono text-gray-500 tabular-nums">
                     {
                       groupQuestions.filter((question) => {
                         const answer = answers[question.id];
@@ -157,10 +183,10 @@ export function StudentFooter({
                     }
                     /{groupQuestions.length}
                   </span>
-                </div>
+                </button>
               )}
               {index < passageGroups.length - 1 ? (
-                <div className="w-px h-3 md:h-4 lg:h-5 bg-gray-200 mx-0.5"></div>
+                <div className="w-px h-4 bg-gray-200" aria-hidden="true" />
               ) : null}
             </div>
           );

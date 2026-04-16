@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 interface SelectOption {
   value: string;
@@ -28,31 +29,29 @@ export function Select({
 }: SelectProps) {
   const generatedId = useId();
   const selectId = id || generatedId;
-  
-  const baseStyles = 'h-10 px-3 text-sm border rounded-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed appearance-none bg-white';
-  
+
+  const baseStyles =
+    'h-10 pl-3.5 pr-10 text-sm border rounded-lg transition-all duration-150 outline-none disabled:opacity-40 disabled:cursor-not-allowed appearance-none bg-white';
+
   const stateStyles = error
-    ? 'border-red-700 text-gray-900 focus:ring-red-500 focus:border-red-700'
-    : 'border-gray-200 text-gray-900 focus:ring-blue-500 focus:border-blue-800';
-  
+    ? 'border-red-300 text-gray-900 focus:border-red-500 focus:ring-4 focus:ring-red-500/10'
+    : 'border-gray-200 text-gray-900 hover:border-gray-300 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10';
+
   const widthStyle = fullWidth ? 'w-full' : '';
 
   return (
     <div className={`flex flex-col gap-1.5 ${fullWidth ? 'w-full' : ''}`}>
       {label && (
-        <label 
-          htmlFor={selectId}
-          className="text-sm font-semibold text-gray-900"
-        >
+        <label htmlFor={selectId} className="text-sm font-medium text-gray-900">
           {label}
-          {props.required && <span className="text-red-700 ml-0.5">*</span>}
+          {props.required && <span className="text-red-600 ml-0.5" aria-hidden="true">*</span>}
         </label>
       )}
-      
+
       <div className="relative">
         <select
           id={selectId}
-          className={`${baseStyles} ${stateStyles} ${widthStyle} ${className} pr-10`}
+          className={`${baseStyles} ${stateStyles} ${widthStyle} ${className}`}
           {...props}
         >
           {placeholder && (
@@ -61,44 +60,27 @@ export function Select({
             </option>
           )}
           {options.map((option) => (
-            <option 
-              key={option.value} 
-              value={option.value}
-              disabled={option.disabled}
-            >
+            <option key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </option>
           ))}
         </select>
-        
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-          <svg
-            className="w-4 h-4 text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-        </div>
+
+        <ChevronDown
+          size={16}
+          strokeWidth={1.75}
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500"
+          aria-hidden="true"
+        />
       </div>
-      
+
       {error && (
-        <p className="text-xs text-red-700 font-medium" role="alert">
+        <p className="text-xs text-red-600 font-medium" role="alert">
           {error}
         </p>
       )}
-      
-      {helperText && !error && (
-        <p className="text-xs text-gray-600">
-          {helperText}
-        </p>
-      )}
+
+      {helperText && !error && <p className="text-xs text-gray-500">{helperText}</p>}
     </div>
   );
 }
