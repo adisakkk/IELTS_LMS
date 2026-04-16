@@ -21,11 +21,11 @@ const variantIcons = {
   info: Info,
 };
 
-const variantStyles = {
-  success: 'bg-green-50 border-green-700 text-green-900',
-  error: 'bg-red-50 border-red-700 text-red-900',
-  warning: 'bg-amber-50 border-amber-700 text-amber-900',
-  info: 'bg-blue-50 border-blue-700 text-blue-900',
+const chipStyles = {
+  success: 'bg-green-100 text-green-700 ring-1 ring-green-200',
+  error: 'bg-red-100 text-red-700 ring-1 ring-red-200',
+  warning: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+  info: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200',
 };
 
 export function Toast({
@@ -55,25 +55,30 @@ export function Toast({
       id={uniqueId}
       role="alert"
       aria-live="polite"
-      initial={{ opacity: 0, x: 100 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 100 }}
-      className={`flex items-start gap-3 p-4 rounded-sm border shadow-lg max-w-md ${variantStyles[variant]}`}
+      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+      transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+      className="flex items-start gap-3 p-4 rounded-2xl border border-gray-100 bg-white max-w-md"
+      style={{ boxShadow: '0 12px 24px -8px rgba(10,10,12,0.12), 0 0 0 1px rgba(10,10,12,0.04)' }}
     >
-      <Icon size={20} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
-      <div className="flex-1 min-w-0">
-        {title && (
-          <p className="font-semibold text-sm mb-1">{title}</p>
-        )}
-        <p className="text-sm leading-relaxed">{message}</p>
+      <div
+        className={`flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center ${chipStyles[variant]}`}
+        aria-hidden="true"
+      >
+        <Icon size={16} strokeWidth={2} />
+      </div>
+      <div className="flex-1 min-w-0 pt-0.5">
+        {title && <p className="font-semibold text-sm text-gray-900 leading-tight mb-0.5">{title}</p>}
+        <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
       </div>
       {showCloseButton && (
         <button
           onClick={onClose}
-          className="flex-shrink-0 p-1 hover:bg-black/10 rounded transition-colors"
+          className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
           aria-label="Close notification"
         >
-          <X size={16} />
+          <X size={14} />
         </button>
       )}
     </motion.div>
@@ -82,7 +87,7 @@ export function Toast({
 
 interface ToastContainerProps {
   children: React.ReactNode;
-  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'top-center' | 'bottom-center';
 }
 
 const positionStyles = {
@@ -90,6 +95,8 @@ const positionStyles = {
   'top-left': 'top-4 left-4',
   'bottom-right': 'bottom-4 right-4',
   'bottom-left': 'bottom-4 left-4',
+  'top-center': 'top-4 left-1/2 -translate-x-1/2',
+  'bottom-center': 'bottom-4 left-1/2 -translate-x-1/2',
 };
 
 export function ToastContainer({ children, position = 'top-right' }: ToastContainerProps) {

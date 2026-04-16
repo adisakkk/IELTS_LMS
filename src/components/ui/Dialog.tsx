@@ -6,6 +6,7 @@ interface DialogProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -15,10 +16,18 @@ interface DialogProps {
   className?: string;
 }
 
+/**
+ * Dialog — refined modal primitive.
+ *
+ * Design: soft 20px radii, warm ink overlay with subtle blur,
+ * layered shadow, optional serif-display title with description.
+ * Respects prefers-reduced-motion via the global CSS cascade.
+ */
 export function Dialog({
   isOpen,
   onClose,
   title,
+  description,
   children,
   footer,
   size = 'md',
@@ -30,15 +39,15 @@ export function Dialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
   const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
       previousActiveElement.current = document.activeElement as HTMLElement;
 
-      // Focus trap
       const focusableElements = dialogRef.current?.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       ) as NodeListOf<HTMLElement>;
 
       if (focusableElements && focusableElements.length > 0) {
@@ -51,9 +60,7 @@ export function Dialog({
         if (focusableElements && focusableElements.length > 0) {
           const firstElement = focusableElements[0];
           const lastElement = focusableElements[focusableElements.length - 1];
-          if (!firstElement || !lastElement) {
-            return;
-          }
+          if (!firstElement || !lastElement) return;
 
           if (e.shiftKey) {
             if (document.activeElement === firstElement) {
@@ -70,14 +77,11 @@ export function Dialog({
       };
 
       document.addEventListener('keydown', handleTab);
-
       return () => {
         document.removeEventListener('keydown', handleTab);
       };
     } else {
       document.body.style.overflow = 'unset';
-
-      // Restore focus
       if (previousActiveElement.current) {
         previousActiveElement.current.focus();
       }
@@ -107,52 +111,70 @@ export function Dialog({
   const sizes = {
     sm: 'max-w-sm',
     md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
+    lg: 'max-w-xl',
+    xl: 'max-w-2xl',
     full: 'max-w-5xl',
   };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? titleId : undefined}
+          aria-describedby={description ? descriptionId : undefined}
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 bg-gray-950/55 backdrop-blur-[3px]"
             onClick={preventCloseOnOverlayClick ? undefined : onClose}
             aria-hidden="true"
           />
           <motion.div
             ref={dialogRef}
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full ${sizes[size]} bg-white rounded-sm shadow-[0_8px_16px_-4px_rgba(9,30,66,0.25),0_0_1px_rgba(9,30,66,0.31)] overflow-hidden flex flex-col ${className}`}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className={`relative w-full ${sizes[size]} bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col ${className}`}
+            style={{ boxShadow: '0 24px 48px -12px rgba(10,10,12,0.22), 0 0 0 1px rgba(10,10,12,0.04)' }}
             role="document"
           >
             {title && (
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h2 id={titleId} className="text-lg font-semibold text-gray-900 leading-tight tracking-tight">{title}</h2>
+              <div className="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 id={titleId} className="font-display text-2xl text-gray-900 leading-tight">
+                    {title}
+                  </h2>
+                  {description && (
+                    <p id={descriptionId} className="mt-1.5 text-sm text-gray-600 leading-relaxed">
+                      {description}
+                    </p>
+                  )}
+                </div>
                 {showCloseButton && (
                   <button
                     onClick={onClose}
-                    className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-shrink-0 h-8 w-8 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/20"
                     aria-label="Close dialog"
                   >
-                    <X size={20} />
+                    <X size={18} strokeWidth={1.75} />
                   </button>
                 )}
               </div>
             )}
-            
-            <div className="px-6 py-5 overflow-y-auto max-h-[70vh] text-gray-800 text-sm leading-relaxed">
+
+            <div className="px-6 pb-6 overflow-y-auto max-h-[70vh] text-gray-700 text-sm leading-relaxed">
               {children}
             </div>
 
             {footer && (
-              <div className="px-6 py-4 border-t border-gray-100 bg-white flex justify-end gap-2">
+              <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/60 flex justify-end gap-2">
                 {footer}
               </div>
             )}

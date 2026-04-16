@@ -20,51 +20,45 @@ export function Textarea({
 }: TextareaProps) {
   const generatedId = useId();
   const textareaId = id || generatedId;
-  
-  const baseStyles = 'px-3 py-2 text-sm border rounded-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed';
-  
+
+  const baseStyles =
+    'px-3.5 py-2.5 text-sm leading-relaxed border rounded-lg transition-all duration-150 outline-none disabled:opacity-40 disabled:cursor-not-allowed bg-white placeholder:text-gray-400';
+
   const stateStyles = error
-    ? 'border-red-700 text-gray-900 focus:ring-red-500 focus:border-red-700 bg-white'
-    : 'border-gray-200 text-gray-900 focus:ring-blue-500 focus:border-blue-800 bg-white';
-  
+    ? 'border-red-300 text-gray-900 focus:border-red-500 focus:ring-4 focus:ring-red-500/10'
+    : 'border-gray-200 text-gray-900 hover:border-gray-300 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10';
+
   const resizeStyles = {
     none: 'resize-none',
     both: 'resize',
     horizontal: 'resize-x',
     vertical: 'resize-y',
   };
-  
+
   const widthStyle = fullWidth ? 'w-full' : '';
 
   return (
     <div className={`flex flex-col gap-1.5 ${fullWidth ? 'w-full' : ''}`}>
       {label && (
-        <label 
-          htmlFor={textareaId}
-          className="text-sm font-semibold text-gray-900"
-        >
+        <label htmlFor={textareaId} className="text-sm font-medium text-gray-900">
           {label}
-          {props.required && <span className="text-red-700 ml-0.5">*</span>}
+          {props.required && <span className="text-red-600 ml-0.5" aria-hidden="true">*</span>}
         </label>
       )}
-      
+
       <textarea
         id={textareaId}
         className={`${baseStyles} ${stateStyles} ${resizeStyles[resize]} ${widthStyle} ${className}`}
         {...props}
       />
-      
+
       {error && (
-        <p className="text-xs text-red-700 font-medium" role="alert">
+        <p className="text-xs text-red-600 font-medium" role="alert">
           {error}
         </p>
       )}
-      
-      {helperText && !error && (
-        <p className="text-xs text-gray-600">
-          {helperText}
-        </p>
-      )}
+
+      {helperText && !error && <p className="text-xs text-gray-500">{helperText}</p>}
     </div>
   );
 }

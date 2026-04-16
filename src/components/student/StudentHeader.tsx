@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wifi, Bell, Menu, Clock, CheckCircle, Loader2, Contrast } from 'lucide-react';
+import { Wifi, Bell, LogOut, Clock, CheckCircle, Loader2, Contrast, WifiOff, AlertTriangle } from 'lucide-react';
 
 interface StudentHeaderProps {
   onExit: () => void;
@@ -11,9 +11,17 @@ interface StudentHeaderProps {
   isExamActive?: boolean | undefined;
 }
 
-export function StudentHeader({ onExit, timeRemaining, elapsedTime = 0, totalSectionTime = 0, autoSaveStatus, onOpenAccessibility, isExamActive = false }: StudentHeaderProps) {
+export function StudentHeader({
+  onExit,
+  timeRemaining,
+  elapsedTime = 0,
+  totalSectionTime = 0,
+  autoSaveStatus,
+  onOpenAccessibility,
+  isExamActive = false,
+}: StudentHeaderProps) {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -33,57 +41,81 @@ export function StudentHeader({ onExit, timeRemaining, elapsedTime = 0, totalSec
     onExit();
   };
 
+  const isWarning = timeRemaining !== undefined && timeRemaining < 300;
+
   return (
-    <header className="h-14 md:h-16 border-b border-gray-200 bg-white flex items-center justify-between px-3 md:px-4 lg:px-6 flex-shrink-0 z-10 shadow-sm" role="banner">
-      <div className="flex items-center gap-3 md:gap-4 lg:gap-6 min-w-0">
-        <div className="bg-white border-2 border-gray-900 px-1.5 md:px-2 lg:px-3 py-0.5 rounded-sm flex-shrink-0">
-          <div className="text-gray-900 font-black text-lg md:text-xl lg:text-2xl tracking-tighter" style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif' }}>IELTS</div>
+    <header
+      className="h-14 md:h-16 border-b border-gray-200 bg-white flex items-center justify-between px-3 md:px-4 lg:px-6 flex-shrink-0 z-10"
+      role="banner"
+    >
+      {/* Brand + candidate */}
+      <div className="flex items-center gap-3 md:gap-4 lg:gap-5 min-w-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="h-7 w-7 rounded-lg bg-gray-900 flex items-center justify-center" aria-hidden="true">
+            <span className="font-display text-white text-[15px] leading-none">A</span>
+          </div>
+          <span className="font-display text-lg md:text-xl text-gray-900 leading-none hidden sm:inline">Axia</span>
         </div>
-        <div className="flex flex-col min-w-0 hidden sm:flex">
-          <div className="font-bold text-[10px] md:text-[11px] text-gray-600 uppercase tracking-widest">Test taker ID</div>
-          <div className="text-xs md:text-sm font-bold text-gray-900 truncate">IELTS-PRO-2024-001</div>
+        <div className="hidden md:block h-6 w-px bg-gray-200" aria-hidden="true" />
+        <div className="hidden sm:flex flex-col min-w-0">
+          <span className="text-[10px] font-medium text-gray-500 tracking-wide">Test taker ID</span>
+          <span className="text-sm font-medium text-gray-900 font-mono truncate">IELTS-PRO-2024-001</span>
         </div>
       </div>
-      
+
+      {/* Timer cluster */}
       {timeRemaining !== undefined && (
-        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3 flex-shrink-0">
-            <div className="text-right hidden sm:block">
-              <div className="text-[9px] md:text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-0.5">Elapsed</div>
-              <div className="font-mono text-xs md:text-sm font-bold text-gray-700">{formatTime(elapsedTime)}</div>
-            </div>
-            <div className="w-px h-5 md:h-6 lg:h-8 bg-gray-200 hidden sm:block"></div>
-            <div className={`flex items-center gap-1.5 md:gap-2 lg:gap-3 font-bold text-base md:text-lg lg:text-xl px-2 md:px-3 lg:px-4 py-1 md:py-1.5 border-2 rounded-sm transition-colors flex-shrink-0 ${timeRemaining < 300 ? 'bg-red-100 border-red-700 text-red-900' : 'bg-gray-50 border-gray-100 text-gray-900'}`}>
-              <Clock size={14} className={timeRemaining < 300 ? 'text-red-900' : 'text-gray-700'} />
-              <span className="font-mono">{formatTime(timeRemaining)}</span>
-            </div>
-            <div className="text-right hidden md:block">
-              <div className="text-[9px] md:text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-0.5">Total</div>
-              <div className="font-mono text-xs md:text-sm font-bold text-gray-700">{formatTime(totalSectionTime)}</div>
-            </div>
+        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar flex-shrink-0">
+          <div className="hidden md:flex flex-col items-end">
+            <span className="text-[10px] font-medium text-gray-500 tracking-wide">Elapsed</span>
+            <span className="font-mono text-xs text-gray-700 tabular-nums">{formatTime(elapsedTime)}</span>
+          </div>
+
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors flex-shrink-0 ${
+              isWarning
+                ? 'bg-red-100 border-red-200 text-red-900 animate-pulse-subtle'
+                : 'bg-gray-50 border-gray-200 text-gray-900'
+            }`}
+            role="timer"
+            aria-live={isWarning ? 'assertive' : 'polite'}
+          >
+            <Clock
+              size={14}
+              strokeWidth={1.75}
+              className={isWarning ? 'text-red-700' : 'text-gray-600'}
+              aria-hidden="true"
+            />
+            <span className="font-mono font-medium text-base md:text-lg tabular-nums leading-none">
+              {formatTime(timeRemaining)}
+            </span>
+          </div>
+
+          <div className="hidden md:flex flex-col items-start">
+            <span className="text-[10px] font-medium text-gray-500 tracking-wide">Total</span>
+            <span className="font-mono text-xs text-gray-700 tabular-nums">{formatTime(totalSectionTime)}</span>
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 md:gap-2 lg:gap-4 text-gray-700 flex-shrink-0">
+      {/* Status & actions */}
+      <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3 text-gray-700 flex-shrink-0">
         {autoSaveStatus && (
-          <div className="flex items-center gap-1 md:gap-1.5 text-[9px] md:text-[10px] lg:text-xs font-bold uppercase tracking-wider hidden sm:flex">
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium">
             {autoSaveStatus === 'saving' || autoSaveStatus === 'syncing' ? (
               <>
-                <Loader2 size={10} className="animate-spin text-gray-600" />
-                <span className="text-gray-600">
-                  {autoSaveStatus === 'syncing' ? 'Syncing' : 'Saving'}
-                </span>
+                <Loader2 size={12} className="animate-spin text-gray-500" strokeWidth={1.75} />
+                <span className="text-gray-600">{autoSaveStatus === 'syncing' ? 'Syncing' : 'Saving'}</span>
               </>
             ) : autoSaveStatus === 'offline' ? (
               <>
-                <Wifi size={10} className="text-amber-600" />
-                <span className="text-amber-700">Offline</span>
+                <WifiOff size={12} className="text-amber-700" strokeWidth={1.75} />
+                <span className="text-amber-800">Offline</span>
               </>
             ) : (
               <>
-                <CheckCircle size={10} className="text-green-600" />
-                <span className="text-green-900">Saved</span>
+                <CheckCircle size={12} className="text-green-700" strokeWidth={1.75} />
+                <span className="text-green-800">Saved</span>
               </>
             )}
           </div>
@@ -91,53 +123,76 @@ export function StudentHeader({ onExit, timeRemaining, elapsedTime = 0, totalSec
         {onOpenAccessibility && (
           <button
             onClick={onOpenAccessibility}
-            className="p-1 md:p-1.5 rounded-sm flex-shrink-0"
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors flex-shrink-0"
             aria-label="Open accessibility settings"
           >
-            <Contrast size={16} strokeWidth={2} />
+            <Contrast size={16} strokeWidth={1.75} />
           </button>
         )}
         {!isExamActive && (
           <>
-            <button className="p-1 md:p-1.5 rounded-sm relative hidden sm:block" aria-label="Connection status: Online">
-              <Wifi size={16} strokeWidth={2} />
-              <div className="absolute top-1 md:top-1.5 right-1 md:right-1.5 w-1.5 md:w-2 h-1.5 md:h-2 bg-green-600 rounded-full border-2 border-white"></div>
+            <button
+              className="relative h-9 w-9 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors hidden sm:flex flex-shrink-0"
+              aria-label="Connection status: Online"
+            >
+              <Wifi size={16} strokeWidth={1.75} />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-600 rounded-full ring-2 ring-white" aria-hidden="true" />
             </button>
-            <button className="p-1 md:p-1.5 rounded-sm hidden sm:block" aria-label="Notifications">
-              <Bell size={16} strokeWidth={2} />
+            <button
+              className="h-9 w-9 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors hidden sm:flex flex-shrink-0"
+              aria-label="Notifications"
+            >
+              <Bell size={16} strokeWidth={1.75} />
             </button>
           </>
         )}
-        <div className="w-px h-5 md:h-6 lg:h-8 bg-gray-200 mx-0.5 md:mx-1 lg:mx-2 hidden sm:block"></div>
+        <div className="hidden sm:block h-6 w-px bg-gray-200 mx-1" aria-hidden="true" />
         <button
           onClick={handleExit}
-          className="flex items-center gap-1 md:gap-1.5 lg:gap-2 px-1.5 md:px-2 lg:px-3 py-1 md:py-1.5 bg-gray-50 text-gray-900 font-bold text-[10px] md:text-xs lg:text-sm rounded-sm flex-shrink-0"
-          aria-label={isExamActive ? "Exit exam" : "Exit preview"}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm font-medium transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-4 focus-visible:ring-gray-900/15"
+          aria-label={isExamActive ? 'Exit exam' : 'Exit preview'}
         >
-          <Menu size={14} strokeWidth={2.5} />
+          <LogOut size={14} strokeWidth={1.75} aria-hidden="true" />
           <span className="hidden sm:inline">Exit</span>
         </button>
       </div>
-      
+
+      {/* Exit confirmation overlay */}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/70 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="exit-confirm-title">
-          <div className="max-w-md w-full bg-white rounded-sm border border-gray-100 shadow-2xl p-6 md:p-8">
-            <h2 id="exit-confirm-title" className="text-xl font-black text-gray-900 mb-3">Exit Exam?</h2>
-            <p className="text-sm text-gray-700 leading-6 mb-6">
-              Are you sure you want to exit the exam? Your progress will be saved, but you will not be able to return to this session.
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/55 backdrop-blur-[3px] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="exit-confirm-title"
+        >
+          <div
+            className="max-w-md w-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7"
+            style={{ boxShadow: '0 24px 48px -12px rgba(10,10,12,0.22)' }}
+          >
+            <div
+              className="h-10 w-10 rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200 flex items-center justify-center mb-4"
+              aria-hidden="true"
+            >
+              <AlertTriangle size={18} strokeWidth={1.75} />
+            </div>
+            <h2 id="exit-confirm-title" className="font-display text-2xl text-gray-900 leading-tight mb-2">
+              Exit this exam?
+            </h2>
+            <p className="text-sm text-gray-600 leading-relaxed mb-6">
+              Your progress has been saved, but once you leave you will not be able to return to this session.
             </p>
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowExitConfirm(false)}
-                className="px-4 py-2 bg-gray-50 text-gray-900 font-bold text-sm rounded-sm"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                Cancel
+                Continue exam
               </button>
               <button
                 onClick={confirmExit}
-                className="px-4 py-2 bg-red-800 text-white font-bold text-sm rounded-sm"
+                className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white text-sm font-medium transition-colors"
               >
-                Exit Exam
+                Exit exam
               </button>
             </div>
           </div>
