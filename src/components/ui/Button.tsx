@@ -14,6 +14,12 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   disabled?: boolean;
 }
 
+/**
+ * Button — Refined, high-end
+ *
+ * Uses ink-black primary, subtle shadows, and gently rounded corners.
+ * All variants share a cohesive motion language.
+ */
 export function Button({
   children,
   variant = 'primary',
@@ -25,15 +31,22 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed rounded-[3px] tracking-tight';
-  
+  const baseStyles =
+    'inline-flex items-center justify-center font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none rounded-lg tracking-tight select-none active:translate-y-[0.5px]';
+
   const variants = {
-    primary: 'bg-blue-800 text-white hover:bg-blue-700 active:bg-blue-900 focus:ring-blue-500 shadow-sm',
-    secondary: 'bg-gray-200 text-gray-700 hover:bg-gray-100 active:bg-gray-300 focus:ring-gray-300',
-    danger: 'bg-red-800 text-white hover:bg-red-700 active:bg-red-900 focus:ring-red-500 shadow-sm',
-    warning: 'bg-amber-700 text-gray-900 hover:bg-amber-600 active:bg-amber-800 focus:ring-amber-400 shadow-sm',
-    ghost: 'bg-transparent text-blue-800 hover:bg-blue-200 active:bg-blue-300 focus:ring-blue-400',
-    outline: 'bg-transparent text-blue-800 border-2 border-blue-800 hover:bg-blue-200 active:bg-blue-300 focus:ring-blue-400',
+    primary:
+      'bg-gray-900 text-white hover:bg-gray-800 active:bg-black shadow-sm hover:shadow-md',
+    secondary:
+      'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-xs',
+    danger:
+      'bg-red-700 text-white hover:bg-red-800 active:bg-red-900 shadow-sm hover:shadow-md',
+    warning:
+      'bg-amber-700 text-white hover:bg-amber-800 active:bg-amber-900 shadow-sm hover:shadow-md',
+    ghost:
+      'bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900',
+    outline:
+      'bg-transparent text-gray-900 border border-gray-900 hover:bg-gray-900 hover:text-white',
   };
 
   const sizes = {
@@ -49,7 +62,7 @@ export function Button({
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthStyle} ${className}`}
       {...props}
     >
-      {isLoading && <Loader2 className="animate-spin" size={size === 'sm' ? 14 : 18} />}
+      {isLoading && <Loader2 className="animate-spin" size={size === 'sm' ? 14 : 16} />}
       {!isLoading && leftIcon}
       {children}
       {!isLoading && rightIcon}

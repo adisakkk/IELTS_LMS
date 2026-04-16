@@ -10,6 +10,10 @@ interface EmptyStateProps {
   className?: string;
 }
 
+/**
+ * EmptyState — Refined, editorial
+ * Uses serif display type for the title and a subtle ring around the icon.
+ */
 export function EmptyState({
   icon,
   title,
@@ -18,31 +22,33 @@ export function EmptyState({
   variant = 'default',
   className = '',
 }: EmptyStateProps) {
-  const variantIcons = {
-    default: <Inbox size={48} className="text-gray-300" />,
-    search: <Search size={48} className="text-gray-300" />,
-    error: <AlertCircle size={48} className="text-red-300" />,
-    success: <CheckCircle size={48} className="text-green-300" />,
-  };
+  const variantConfig = {
+    default: { Icon: Inbox, tint: 'bg-gray-100 text-gray-500' },
+    search: { Icon: Search, tint: 'bg-gray-100 text-gray-500' },
+    error: { Icon: AlertCircle, tint: 'bg-red-100 text-red-600' },
+    success: { Icon: CheckCircle, tint: 'bg-green-100 text-green-700' },
+  } as const;
+
+  const { Icon, tint } = variantConfig[variant];
 
   return (
-    <div className={`flex flex-col items-center justify-center p-8 text-center ${className}`}>
-      <div className="mb-4">
-        {icon || variantIcons[variant]}
+    <div
+      className={`flex flex-col items-center justify-center p-10 text-center ${className}`}
+    >
+      <div
+        className={`mb-5 w-14 h-14 rounded-2xl flex items-center justify-center ring-1 ring-inset ring-gray-200 ${tint}`}
+      >
+        {icon ?? <Icon size={24} />}
       </div>
-      <h3 className="text-base font-semibold text-gray-900 mb-2">
+      <h3 className="font-display text-2xl text-gray-900 tracking-tight mb-2 text-balance">
         {title}
       </h3>
       {description && (
-        <p className="text-sm text-gray-600 mb-4 max-w-md">
+        <p className="text-sm text-gray-600 mb-5 max-w-md leading-relaxed text-pretty">
           {description}
         </p>
       )}
-      {action && (
-        <div className="mt-2">
-          {action}
-        </div>
-      )}
+      {action && <div className="mt-1">{action}</div>}
     </div>
   );
 }
