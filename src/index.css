@@ -1,135 +1,253 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
+  /* ──────────────────────────────────────────────────────────
+     Typography — Inter for UI, Instrument Serif for display
+     ──────────────────────────────────────────────────────── */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  --font-serif: "Instrument Serif", "Times New Roman", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Typography Scale - Consistent visual hierarchy */
-  --font-size-xs: 0.75rem;   /* 12px - Captions, labels */
-  --font-size-sm: 0.875rem;  /* 14px - Body text, secondary */
-  --font-size-base: 1rem;    /* 16px - Default body */
-  --font-size-lg: 1.125rem;  /* 18px - Subheadings */
-  --font-size-xl: 1.25rem;   /* 20px - Headings */
-  --font-size-2xl: 1.5rem;   /* 24px - Section titles */
-  --font-size-3xl: 1.875rem; /* 30px - Page titles */
-  
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.5rem;
+  --font-size-5xl: 3.5rem;
+
+  --font-weight-light: 300;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  --line-height-tight: 1.25;
+  --line-height-tight: 1.15;
+  --line-height-snug: 1.35;
   --line-height-normal: 1.5;
-  --line-height-relaxed: 1.75;
+  --line-height-relaxed: 1.65;
 
-  --letter-spacing-tight: -0.025em;
+  --letter-spacing-tightest: -0.04em;
+  --letter-spacing-tight: -0.02em;
   --letter-spacing-normal: 0;
-  --letter-spacing-wide: 0.025em;
+  --letter-spacing-wide: 0.02em;
 
-  /* Spacing Tokens - Consistent spacing scale */
-  --spacing-1: 0.25rem;  /* 4px */
-  --spacing-2: 0.5rem;   /* 8px */
-  --spacing-3: 0.75rem;  /* 12px */
-  --spacing-4: 1rem;     /* 16px */
-  --spacing-5: 1.25rem;  /* 20px */
-  --spacing-6: 1.5rem;   /* 24px */
-  --spacing-8: 2rem;     /* 32px */
-  --spacing-10: 2.5rem;  /* 40px */
-  --spacing-12: 3rem;    /* 48px */
+  /* ──────────────────────────────────────────────────────────
+     Spacing
+     ──────────────────────────────────────────────────────── */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
 
-  /* Atlassian Design System Color Palette */
-  /* Blue */
-  --color-blue-900: #0747A6; /* B500 */
-  --color-blue-800: #0052CC; /* B400 */
-  --color-blue-700: #0065FF; /* B300 */
-  --color-blue-600: #2684FF; /* B200 */
-  --color-blue-500: #4C9AFF; /* B100 */
-  --color-blue-400: #7AB2FF;
-  --color-blue-300: #B3D4FF; /* B75 */
-  --color-blue-200: #DEEBFF; /* B50 */
-  --color-blue-100: #E6EFFC;
-  --color-blue-50: #F0F5FF;
+  /* ──────────────────────────────────────────────────────────
+     Neutrals — Warm, refined gray scale
+     Replaces the enterprise gray with a softer, editorial tone
+     ──────────────────────────────────────────────────────── */
+  --color-gray-950: #09090B;
+  --color-gray-900: #0A0A0C;  /* Near-black text — primary */
+  --color-gray-800: #1A1A1E;
+  --color-gray-700: #2F2F36;
+  --color-gray-600: #52525B;  /* Secondary text */
+  --color-gray-500: #71717A;  /* Tertiary text */
+  --color-gray-400: #A1A1AA;  /* Disabled */
+  --color-gray-300: #D4D4D8;
+  --color-gray-200: #E7E5E0;  /* Borders — warm */
+  --color-gray-100: #EFEDE7;  /* Soft divider — warm */
+  --color-gray-50:  #FAF8F3;  /* Cream background — signature warm off-white */
 
-  /* Neutral */
-  --color-gray-900: #172B4D; /* N800 - Text */
-  --color-gray-800: #253858; /* N700 */
-  --color-gray-700: #42526E; /* N600 */
-  --color-gray-600: #5E6C84; /* N500 - Secondary Text */
-  --color-gray-500: #7A869A; /* N400 */
-  --color-gray-400: #97A0AF; /* N300 */
-  --color-gray-300: #A5ADBA; /* N200 */
-  --color-gray-200: #C1C7D0; /* N100 */
-  --color-gray-100: #DFE1E6; /* N40 - Borders */
-  --color-gray-50: #F4F5F7;  /* N20 - Backgrounds */
+  /* ──────────────────────────────────────────────────────────
+     Primary — Deep ink (replaces bright corporate blue)
+     Gives the app a Linear / Vercel / Stripe premium feel
+     ──────────────────────────────────────────────────────── */
+  --color-blue-950: #030712;
+  --color-blue-900: #0B0F17;  /* Deepest ink */
+  --color-blue-800: #0F172A;  /* Primary — slate ink */
+  --color-blue-700: #1E293B;  /* Primary hover */
+  --color-blue-600: #334155;  /* Active / pressed */
+  --color-blue-500: #64748B;  /* Muted icon */
+  --color-blue-400: #94A3B8;
+  --color-blue-300: #CBD5E1;
+  --color-blue-200: #E2E8F0;  /* Soft tint backgrounds */
+  --color-blue-100: #EEF2F7;  /* Subtle info tint */
+  --color-blue-50:  #F6F8FC;
 
-  /* Success (Green) */
-  --color-green-900: #006644;
-  --color-green-800: #00875A;
-  --color-green-700: #36B37E; /* G400 */
-  --color-green-600: #57D9A3;
-  --color-green-500: #79F2C0;
-  --color-green-100: #E3FCEF;
+  /* ──────────────────────────────────────────────────────────
+     Success — Refined forest green
+     ──────────────────────────────────────────────────────── */
+  --color-green-900: #052E1C;
+  --color-green-800: #065F46;
+  --color-green-700: #047857;
+  --color-green-600: #10B981;
+  --color-green-500: #34D399;
+  --color-green-200: #A7F3D0;
+  --color-green-100: #ECFDF5;
 
-  /* Danger (Red) */
-  --color-red-900: #BF2600;
-  --color-red-800: #DE350B;
-  --color-red-700: #FF5630; /* R400 */
-  --color-red-600: #FF7452;
-  --color-red-500: #FF8F73;
-  --color-red-100: #FFEBE6;
+  /* ──────────────────────────────────────────────────────────
+     Danger — Refined crimson
+     ──────────────────────────────────────────────────────── */
+  --color-red-900: #5B1817;
+  --color-red-800: #991B1B;
+  --color-red-700: #B91C1C;
+  --color-red-600: #DC2626;
+  --color-red-500: #EF4444;
+  --color-red-200: #FECACA;
+  --color-red-100: #FEF2F2;
 
-  /* Warning (Yellow) */
-  --color-amber-900: #FF8B00;
-  --color-amber-800: #FF991F;
-  --color-amber-700: #FFAB00; /* Y400 */
-  --color-amber-600: #FFC400;
-  --color-amber-500: #FFE380;
-  --color-amber-100: #FFFAE6;
+  /* ──────────────────────────────────────────────────────────
+     Warning — Refined honey (elegant warm accent)
+     ──────────────────────────────────────────────────────── */
+  --color-amber-900: #3F1D0D;
+  --color-amber-800: #78350F;
+  --color-amber-700: #B45309;
+  --color-amber-600: #D97706;
+  --color-amber-500: #F59E0B;
+  --color-amber-200: #FDE68A;
+  --color-amber-100: #FEF3C7;
 
-  /* Semantic Aliases */
+  /* ──────────────────────────────────────────────────────────
+     Semantic aliases
+     ──────────────────────────────────────────────────────── */
   --color-primary: var(--color-blue-800);
-  --color-success: var(--color-green-800);
-  --color-warning: var(--color-amber-800);
-  --color-danger: var(--color-red-800);
-  --color-info: var(--color-blue-700);
-  
-  /* Hierarchy Colors - Visual hierarchy through color */
-  --color-hierarchy-primary: var(--color-blue-800);      /* Primary actions, main headings */
-  --color-hierarchy-secondary: var(--color-gray-700);     /* Secondary text, labels */
-  --color-hierarchy-tertiary: var(--color-gray-500);     /* Captions, hints */
-  --color-hierarchy-disabled: var(--color-gray-300);      /* Disabled states */
-  --color-hierarchy-border: var(--color-gray-200);       /* Borders, dividers */
-  --color-hierarchy-background: var(--color-gray-50);    /* Section backgrounds */
+  --color-success: var(--color-green-700);
+  --color-warning: var(--color-amber-700);
+  --color-danger: var(--color-red-700);
+  --color-info: var(--color-blue-600);
 
-  /* Atlassian Styling */
-  --radius-sm: 3px;
-  --radius-md: 3px;
-  --radius-lg: 3px;
-  --radius-xl: 3px;
+  --color-hierarchy-primary: var(--color-gray-900);
+  --color-hierarchy-secondary: var(--color-gray-600);
+  --color-hierarchy-tertiary: var(--color-gray-500);
+  --color-hierarchy-disabled: var(--color-gray-400);
+  --color-hierarchy-border: var(--color-gray-200);
+  --color-hierarchy-background: var(--color-gray-50);
+
+  /* ──────────────────────────────────────────────────────────
+     Radii — Modern, gently rounded (replaces sharp 3px)
+     ──────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 28px;
+
+  /* ──────────────────────────────────────────────────────────
+     Shadows — Layered, premium
+     ──────────────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px 0 rgba(10, 10, 12, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(10, 10, 12, 0.04), 0 1px 3px 0 rgba(10, 10, 12, 0.06);
+  --shadow-md: 0 2px 4px -1px rgba(10, 10, 12, 0.04), 0 4px 8px -2px rgba(10, 10, 12, 0.06);
+  --shadow-lg: 0 4px 8px -2px rgba(10, 10, 12, 0.04), 0 12px 24px -4px rgba(10, 10, 12, 0.08);
+  --shadow-xl: 0 8px 16px -4px rgba(10, 10, 12, 0.06), 0 24px 48px -12px rgba(10, 10, 12, 0.12);
+  --shadow-2xl: 0 24px 64px -16px rgba(10, 10, 12, 0.18);
 }
 
 @layer base {
+  html {
+    background-color: var(--color-gray-50);
+  }
+
   body {
-    @apply font-sans bg-white text-gray-900 antialiased;
+    @apply font-sans text-gray-900 antialiased;
+    background-color: var(--color-gray-50);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  }
+
+  ::selection {
+    background-color: var(--color-blue-800);
+    color: #fff;
+  }
+
+  /* Refined scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-gray-200);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gray-300);
+    background-clip: padding-box;
+    border: 2px solid transparent;
   }
 }
 
 @layer components {
-  .btn-primary {
-    @apply bg-blue-800 text-white hover:bg-blue-700 transition-colors px-4 py-2 rounded-sm font-medium;
+  /* ──────────────────────────────────────────────────────────
+     Signature utilities
+     ──────────────────────────────────────────────────────── */
+  .font-display {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: var(--letter-spacing-tight);
   }
-  
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Subtle grain texture for hero surfaces */
+  .bg-grain {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(255,255,255,0.03) 0%, transparent 40%);
+  }
+
+  /* Soft mesh gradient for accent surfaces */
+  .bg-ink-mesh {
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(148,163,184,0.22), transparent 60%),
+      radial-gradient(900px 500px at 110% 110%, rgba(59,130,246,0.16), transparent 55%),
+      linear-gradient(180deg, #0B0F17 0%, #0F172A 100%);
+  }
+
+  /* Elevated card base */
   .card-base {
-    @apply bg-white border border-gray-100 rounded-sm shadow-sm overflow-hidden;
+    @apply bg-white border border-gray-100 rounded-xl;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-elevated {
+    @apply bg-white border border-gray-100 rounded-xl;
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Primary action button base — used as utility when not using <Button /> */
+  .btn-primary {
+    @apply bg-gray-900 text-white transition-all px-4 py-2 rounded-lg font-medium;
+    box-shadow: 0 1px 2px rgba(10,10,12,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .btn-primary:hover {
+    @apply bg-gray-800;
   }
 
   @keyframes pulse-subtle {
     0%, 100% {
-      box-shadow: 0 0 0 0 rgba(0, 82, 204, 0);
+      box-shadow: 0 0 0 0 rgba(15, 23, 42, 0);
     }
     50% {
-      box-shadow: 0 0 0 4px rgba(0, 82, 204, 0.1);
+      box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.08);
     }
   }
 
@@ -137,21 +255,28 @@
     animation: pulse-subtle 2s ease-in-out infinite;
   }
 
-  /* Accessibility: Focus-visible styles */
-  @layer base {
-    *:focus-visible {
-      outline: 2px solid var(--color-blue-600);
-      outline-offset: 2px;
-    }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
 
-    *:focus:not(:focus-visible) {
-      outline: none;
-    }
+  /* Accessibility: Focus-visible styles */
+  *:focus-visible {
+    outline: 2px solid var(--color-blue-600);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  *:focus:not(:focus-visible) {
+    outline: none;
   }
 
   /* Accessibility: Skip link for keyboard users */
   .skip-link {
-    @apply absolute -top-full left-0 bg-blue-800 text-white px-4 py-2 z-[9999] transition-all;
+    @apply absolute -top-full left-0 bg-gray-900 text-white px-4 py-2 z-[9999] rounded-br-lg transition-all;
   }
 
   .skip-link:focus {
@@ -179,17 +304,14 @@
     }
   }
 
-  /* Accessibility: no-scrollbar with justification */
-  /* Used in scrollable containers where scrollbars are visually distracting
-     but keyboard navigation and touch scrolling remain fully functional.
-     Scroll functionality is preserved, only the scrollbar visual is hidden. */
+  /* Hidden scrollbars when requested (content remains scrollable) */
   .no-scrollbar {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .no-scrollbar::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+    display: none;
   }
 
   /* Accessibility: Live region announcements */
@@ -205,7 +327,6 @@
     border: 0;
   }
 
-  /* Accessibility: Focus trap for modals */
   .focus-trap-boundary {
     outline: none;
   }

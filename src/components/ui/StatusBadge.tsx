@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, File, Calendar, CheckCircle2, Clock, Edit } from 'lucide-react';
+import { FileText, File, Calendar, CheckCircle2, Clock } from 'lucide-react';
 
 interface StatusBadgeProps {
   children: React.ReactNode;
@@ -10,9 +10,13 @@ interface StatusBadgeProps {
   context?: string;
 }
 
-export function StatusBadge({ 
-  children, 
-  variant = 'neutral', 
+/**
+ * StatusBadge — Refined status pill with dot indicator.
+ * Softer tone-on-tone palette with an elegant leading dot for quick scanning.
+ */
+export function StatusBadge({
+  children,
+  variant = 'neutral',
   size = 'md',
   className = '',
   showIcon = true,
@@ -22,98 +26,91 @@ export function StatusBadge({
     success: {
       bg: 'bg-green-100',
       text: 'text-green-800',
-      border: 'border-green-200',
-      dot: 'bg-green-700',
+      ring: 'ring-green-200',
+      dot: 'bg-green-600',
       icon: CheckCircle2,
-      iconColor: 'text-green-600',
     },
     warning: {
       bg: 'bg-amber-100',
       text: 'text-amber-800',
-      border: 'border-amber-200',
-      dot: 'bg-amber-700',
+      ring: 'ring-amber-200',
+      dot: 'bg-amber-600',
       icon: Clock,
-      iconColor: 'text-amber-600',
     },
     danger: {
       bg: 'bg-red-100',
       text: 'text-red-800',
-      border: 'border-red-200',
-      dot: 'bg-red-700',
+      ring: 'ring-red-200',
+      dot: 'bg-red-600',
       icon: Clock,
-      iconColor: 'text-red-600',
     },
     info: {
       bg: 'bg-blue-100',
-      text: 'text-blue-800',
-      border: 'border-blue-200',
-      dot: 'bg-blue-700',
+      text: 'text-blue-700',
+      ring: 'ring-blue-200',
+      dot: 'bg-blue-600',
       icon: Clock,
-      iconColor: 'text-blue-600',
     },
     neutral: {
       bg: 'bg-gray-100',
-      text: 'text-gray-800',
-      border: 'border-gray-200',
-      dot: 'bg-gray-600',
+      text: 'text-gray-700',
+      ring: 'ring-gray-200',
+      dot: 'bg-gray-500',
       icon: Clock,
-      iconColor: 'text-gray-600',
     },
     paused: {
       bg: 'bg-blue-100',
-      text: 'text-blue-800',
-      border: 'border-blue-200',
-      dot: 'bg-blue-700',
+      text: 'text-blue-700',
+      ring: 'ring-blue-200',
+      dot: 'bg-blue-600',
       icon: Clock,
-      iconColor: 'text-blue-600',
     },
     draft: {
       bg: 'bg-gray-100',
-      text: 'text-gray-800',
-      border: 'border-gray-200',
-      dot: 'bg-gray-600',
+      text: 'text-gray-700',
+      ring: 'ring-gray-200',
+      dot: 'bg-gray-500',
       icon: FileText,
-      iconColor: 'text-gray-600',
     },
     published: {
       bg: 'bg-green-100',
       text: 'text-green-800',
-      border: 'border-green-200',
-      dot: 'bg-green-700',
+      ring: 'ring-green-200',
+      dot: 'bg-green-600',
       icon: File,
-      iconColor: 'text-green-600',
     },
     scheduled: {
       bg: 'bg-blue-100',
-      text: 'text-blue-800',
-      border: 'border-blue-200',
-      dot: 'bg-blue-700',
+      text: 'text-blue-700',
+      ring: 'ring-blue-200',
+      dot: 'bg-blue-600',
       icon: Calendar,
-      iconColor: 'text-blue-600',
     },
   };
 
   const sizes = {
-    sm: 'px-2 py-0.5 text-[10px] gap-1.5',
-    md: 'px-2.5 py-1 text-xs gap-2',
+    sm: 'px-2 py-0.5 text-[11px] gap-1.5',
+    md: 'px-2.5 py-1 text-xs gap-1.5',
   };
 
   const style = variants[variant];
-  const IconComponent = style.icon;
 
   return (
-    <span 
-      className={`inline-flex items-center border rounded-sm font-bold uppercase tracking-wider ${style.bg} ${style.text} ${style.border} ${sizes[size]} ${className}`}
+    <span
+      className={`inline-flex items-center ring-1 ring-inset rounded-full font-medium ${style.bg} ${style.text} ${style.ring} ${sizes[size]} ${className}`}
       role="status"
       aria-label={`${children}${context ? ` - ${context}` : ''}`}
     >
-      {showIcon && IconComponent && (
-        <IconComponent size={size === 'sm' ? 10 : 12} className={style.iconColor} aria-hidden="true" />
+      {showIcon && (
+        <span
+          className={`inline-block ${size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2'} rounded-full ${style.dot}`}
+          aria-hidden="true"
+        />
       )}
       <span className="truncate">{children}</span>
       {context && (
-        <span className="hidden sm:inline opacity-75">
-          {' '}- {context}
+        <span className="hidden sm:inline opacity-70">
+          · {context}
         </span>
       )}
     </span>

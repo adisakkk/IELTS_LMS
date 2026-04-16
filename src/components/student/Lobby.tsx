@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Clock } from 'lucide-react';
+import { Play, Clock, Headphones, BookOpen, PenTool, MessageCircle, Shield, Wifi } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { ExamState } from '../../types';
 
@@ -9,63 +9,171 @@ interface LobbyProps {
   onExit: () => void;
 }
 
+const MODULE_META: Record<string, { icon: typeof Headphones; tint: string }> = {
+  listening: { icon: Headphones, tint: 'bg-blue-100 text-blue-700' },
+  reading: { icon: BookOpen, tint: 'bg-green-100 text-green-700' },
+  writing: { icon: PenTool, tint: 'bg-amber-100 text-amber-700' },
+  speaking: { icon: MessageCircle, tint: 'bg-red-100 text-red-700' },
+};
+
+/**
+ * Lobby — Refined pre-exam screen
+ * Editorial framing, calm palette, one clear primary action.
+ */
 export function Lobby({ state, onStart, onExit }: LobbyProps) {
   void onExit;
 
   const enabledModules = Object.values(state.config.sections)
-    .filter(s => s.enabled)
+    .filter((s) => s.enabled)
     .sort((a, b) => a.order - b.order);
-  
+
   const totalDuration = enabledModules.reduce((acc, s) => acc + s.duration, 0);
+  const hours = Math.floor(totalDuration / 60);
+  const mins = totalDuration % 60;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen w-full bg-gray-50 p-3 sm:p-4 md:p-6 lg:p-8">
-      <div className="bg-white rounded-sm shadow-[0_8px_24px_rgba(9,30,66,0.08)] max-w-2xl w-full overflow-hidden border border-gray-100 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] md:max-h-[calc(100vh-4rem)] lg:max-h-[calc(100vh-5rem)]">
+    <div className="flex flex-col items-center justify-center min-h-screen w-full bg-gray-50 p-4 sm:p-6 lg:p-10 relative overflow-hidden">
+      {/* Ambient background ornaments */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-amber-100/40 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-40 -left-40 w-[520px] h-[520px] rounded-full bg-blue-100/60 blur-3xl"
+      />
 
-        <div className="p-3 sm:p-4 md:p-6 lg:p-10 space-y-3 sm:space-y-4 md:space-y-6 lg:space-y-8 overflow-y-auto flex-1">
-          <div className="flex gap-1.5 sm:gap-2 md:gap-3 p-2 sm:p-3 md:p-4 bg-gray-50 border border-gray-100 rounded-sm items-center">
-            <div className="bg-purple-100 text-purple-900 p-1 sm:p-1.5 md:p-2 rounded-sm h-fit flex-shrink-0">
-              <Clock size={14} />
+      <div className="relative max-w-2xl w-full">
+        {/* Brand mark */}
+        <div className="flex items-center justify-center gap-2.5 mb-8">
+          <div className="w-9 h-9 rounded-xl bg-gray-900 text-white flex items-center justify-center font-display italic text-xl leading-none shadow-sm">
+            A
+          </div>
+          <span className="font-display text-xl text-gray-900 tracking-tight">Axia</span>
+        </div>
+
+        {/* Main card */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden animate-fade-in-up">
+          {/* Hero band */}
+          <div className="px-6 sm:px-10 pt-10 pb-8 text-center border-b border-gray-100">
+            <p className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-800 text-xs font-medium ring-1 ring-inset ring-green-200 mb-5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
+              Ready to begin
+            </p>
+            <h1 className="font-display text-4xl sm:text-5xl text-gray-900 tracking-tight leading-[1.05] text-balance mb-3">
+              {state.title || 'Your IELTS Examination'}
+            </h1>
+            <p className="text-gray-600 max-w-md mx-auto text-pretty leading-relaxed">
+              Take a breath. When you're ready, start the examination. You'll be guided through each
+              section with timers and calm instructions.
+            </p>
+          </div>
+
+          {/* Summary row */}
+          <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
+            <div className="px-6 py-5 text-center">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium mb-1.5">
+                Total duration
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <Clock size={16} className="text-gray-400" />
+                <span className="font-display text-2xl text-gray-900 tracking-tight">
+                  {hours > 0 ? `${hours}h ` : ''}
+                  {mins}m
+                </span>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-0.5 sm:mb-1">Total Duration</p>
-              <p className="text-[10px] sm:text-xs md:text-sm font-black text-gray-900 leading-tight">{Math.floor(totalDuration / 60)}h {totalDuration % 60}m</p>
+            <div className="px-6 py-5 text-center">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium mb-1.5">
+                Sections
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <span className="font-display text-2xl text-gray-900 tracking-tight">
+                  {enabledModules.length}
+                </span>
+                <span className="text-sm text-gray-500">modules</span>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2 sm:space-y-3">
-            <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest">Section Durations</p>
-            <div className="space-y-1.5 sm:space-y-2">
-              {enabledModules.map((module) => (
-                <div key={module.label} className="flex justify-between items-center p-1.5 sm:p-2 bg-white border border-gray-100 rounded-sm">
-                  <span className="text-[10px] sm:text-xs md:text-sm font-bold text-gray-900 capitalize">{module.label}</span>
-                  <span className="text-[10px] sm:text-xs md:text-sm font-bold text-blue-800">{module.duration} min</span>
-                </div>
-              ))}
+          {/* Section schedule */}
+          <div className="px-6 sm:px-10 py-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500 font-medium">
+                Schedule
+              </div>
+              <div className="text-[11px] text-gray-400">In order</div>
             </div>
+            <ul className="space-y-2">
+              {enabledModules.map((module, idx) => {
+                const meta = MODULE_META[module.id] ?? { icon: Clock, tint: 'bg-gray-100 text-gray-600' };
+                const Icon = meta.icon;
+                return (
+                  <li
+                    key={module.label}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-100"
+                  >
+                    <span className="w-6 text-xs text-gray-400 font-mono text-center">
+                      {String(idx + 1).padStart(2, '0')}
+                    </span>
+                    <span
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${meta.tint}`}
+                    >
+                      <Icon size={15} />
+                    </span>
+                    <span className="flex-1 text-sm font-medium text-gray-900 capitalize">
+                      {module.label}
+                    </span>
+                    <span className="text-sm text-gray-600 tabular-nums">
+                      {module.duration} min
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
-          <div className="space-y-2 sm:space-y-3 md:space-y-4">
-            <p className="text-[9px] sm:text-[10px] md:text-xs font-black text-gray-600 uppercase tracking-[0.15em]">Candidate Instructions</p>
-            <div className="bg-gray-50 border border-gray-100 rounded-sm p-2 sm:p-3 md:p-4 lg:p-6 text-[10px] sm:text-xs md:text-sm text-gray-700 leading-relaxed max-h-32 sm:max-h-40 md:max-h-48 overflow-y-auto no-scrollbar italic whitespace-pre-wrap">
-              {state.config.general.instructions || "No specific instructions provided. Please follow the rules for each section."}
+          {/* Instructions */}
+          {state.config.general.instructions && (
+            <div className="px-6 sm:px-10 pb-6">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500 font-medium mb-2">
+                Candidate instructions
+              </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700 leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                {state.config.general.instructions}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="pt-2 sm:pt-3 md:pt-4 space-y-2 sm:space-y-3 md:space-y-4">
-            <Button 
-              variant="primary" 
-              size="lg" 
-              fullWidth 
-              leftIcon={<Play size={16} strokeWidth={3} />}
+          {/* Call to action + system indicators */}
+          <div className="px-6 sm:px-10 pb-8 pt-2 space-y-4">
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              leftIcon={<Play size={16} />}
               onClick={onStart}
-              className="py-3 sm:py-4 md:py-5 text-sm sm:text-base md:text-lg font-black shadow-[0_8px_16px_rgba(0,82,204,0.2)] tracking-tight"
+              className="h-14 text-base"
             >
-              Start Exam
+              Begin Examination
             </Button>
+
+            <div className="flex items-center justify-center gap-6 text-xs text-gray-500">
+              <span className="inline-flex items-center gap-1.5">
+                <Shield size={12} className="text-gray-400" />
+                Secure proctoring
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Wifi size={12} className="text-gray-400" />
+                Network stable
+              </span>
+            </div>
           </div>
         </div>
 
+        <p className="text-center text-xs text-gray-500 mt-6">
+          Need help? Contact your proctor before starting.
+        </p>
       </div>
     </div>
   );
