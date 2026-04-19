@@ -21,16 +21,13 @@ export function ExamVersionHistory({
 
   // Version label formatting function
   const getVersionLabel = (version: any): string => {
-    const isCurrentDraft = version.id === exam.currentDraftVersionId;
     const isCurrentPublished = version.id === exam.currentPublishedVersionId;
     
-    if (version.isDraft && isCurrentDraft) {
-      return `Draft ${version.versionNumber} (current)`;
+    if (version.isDraft) {
+      return `Draft ${version.versionNumber}`;
     } else if (version.isPublished) {
       const publishedVersionNumber = versions.filter(v => v.isPublished).findIndex(v => v.id === version.id) + 1;
       return `Published v${publishedVersionNumber}`;
-    } else if (version.isDraft) {
-      return `Draft ${version.versionNumber}`;
     }
     return `Version ${version.versionNumber}`;
   };
@@ -197,7 +194,10 @@ export function ExamVersionHistory({
             </button>
             {onCloneExam && (
               <button
-                onClick={() => setIsCloning(true)}
+                onClick={() => {
+                  setCloneTitle(`${exam.title} (Copy)`);
+                  setIsCloning(true);
+                }}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"
                 title="Create a copy of this exam with all its content and versions."
               >

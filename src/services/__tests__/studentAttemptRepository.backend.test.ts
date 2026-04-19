@@ -1,0 +1,456 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { studentAttemptRepository } from '../studentAttemptRepository';
+import type { StudentAttemptMutation } from '../../types/studentAttempt';
+
+const originalFetch = global.fetch;
+
+function jsonResponse(data: unknown) {
+  return new Response(JSON.stringify({ success: true, data }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function buildSchedule() {
+  return {
+    id: 'sched-1',
+    examId: 'exam-1',
+    examTitle: 'Mock Exam',
+    publishedVersionId: 'ver-1',
+    cohortName: 'Cohort A',
+    institution: 'Center',
+    startTime: '2026-01-01T09:00:00.000Z',
+    endTime: '2026-01-01T12:00:00.000Z',
+    plannedDurationMinutes: 180,
+    deliveryMode: 'proctor_start',
+    recurrenceType: 'none',
+    recurrenceInterval: 1,
+    autoStart: false,
+    autoStop: false,
+    status: 'scheduled',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    createdBy: 'admin-1',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    revision: 1,
+  };
+}
+
+function buildVersion() {
+  return {
+    id: 'ver-1',
+    examId: 'exam-1',
+    versionNumber: 1,
+    parentVersionId: null,
+    contentSnapshot: {
+      title: 'Mock Exam',
+      type: 'Academic',
+      activeModule: 'reading',
+      activePassageId: 'p1',
+      activeListeningPartId: 'l1',
+      config: {
+        general: { preset: 'Academic' },
+        sections: {
+          listening: { enabled: true, order: 1, duration: 30, label: 'Listening', gapAfterMinutes: 0 },
+          reading: { enabled: true, order: 2, duration: 60, label: 'Reading', gapAfterMinutes: 0 },
+          writing: { enabled: true, order: 3, duration: 60, label: 'Writing', gapAfterMinutes: 0 },
+          speaking: { enabled: true, order: 4, duration: 30, label: 'Speaking', gapAfterMinutes: 0 },
+        },
+        delivery: { allowedExtensionMinutes: [] },
+      },
+      reading: { passages: [] },
+      listening: { parts: [] },
+      writing: { task1Prompt: 'Task 1', task2Prompt: 'Task 2' },
+      speaking: { part1Topics: [], cueCard: '', part3Discussion: [] },
+    },
+    configSnapshot: {
+      general: { preset: 'Academic' },
+      sections: {
+        listening: { enabled: true, order: 1, duration: 30, label: 'Listening', gapAfterMinutes: 0 },
+        reading: { enabled: true, order: 2, duration: 60, label: 'Reading', gapAfterMinutes: 0 },
+        writing: { enabled: true, order: 3, duration: 60, label: 'Writing', gapAfterMinutes: 0 },
+        speaking: { enabled: true, order: 4, duration: 30, label: 'Speaking', gapAfterMinutes: 0 },
+      },
+      delivery: { allowedExtensionMinutes: [] },
+    },
+    createdBy: 'owner-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isDraft: false,
+    isPublished: true,
+    revision: 1,
+  };
+}
+
+function buildBackendAttempt(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'attempt-1',
+    scheduleId: 'sched-1',
+    registrationId: null,
+    studentKey: 'student-sched-1-alice',
+    organizationId: null,
+    examId: 'exam-1',
+    publishedVersionId: 'ver-1',
+    examTitle: 'Mock Exam',
+    candidateId: 'alice',
+    candidateName: 'Alice Roe',
+    candidateEmail: 'alice@example.com',
+    phase: 'exam',
+    currentModule: 'reading',
+    currentQuestionId: null,
+    answers: {},
+    writingAnswers: {},
+    flags: {},
+    violationsSnapshot: [],
+    integrity: {
+      preCheck: null,
+      deviceFingerprintHash: null,
+      lastDisconnectAt: null,
+      lastReconnectAt: null,
+      lastHeartbeatAt: null,
+      lastHeartbeatStatus: 'idle',
+    },
+    recovery: {
+      lastRecoveredAt: null,
+      lastLocalMutationAt: null,
+      lastPersistedAt: null,
+      pendingMutationCount: 0,
+      syncState: 'idle',
+    },
+    finalSubmission: null,
+    submittedAt: null,
+    createdAt: '2026-01-01T09:00:00.000Z',
+    updatedAt: '2026-01-01T09:00:00.000Z',
+    revision: 1,
+    ...overrides,
+  };
+}
+
+function buildAttemptCredential(token = 'attempt-token-1') {
+  return {
+    attemptToken: token,
+    expiresAt: '2026-01-01T09:15:00.000Z',
+  };
+}
+
+describe('studentAttemptRepository backend mode', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    global.fetch = originalFetch;
+  });
+
+  it('bootstraps a student attempt through the backend and caches it locally', async () => {
+    vi.stubEnv('VITE_FEATURE_USE_BACKEND_DELIVERY', 'true');
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schedule: buildSchedule(),
+        version: buildVersion(),
+        runtime: null,
+        attempt: buildBackendAttempt(),
+        attemptCredential: buildAttemptCredential(),
+        degradedLiveMode: false,
+      }),
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const attempt = await studentAttemptRepository.createAttempt({
+      scheduleId: 'sched-1',
+      studentKey: 'student-sched-1-alice',
+      examId: 'exam-1',
+      examTitle: 'Mock Exam',
+      candidateId: 'alice',
+      candidateName: 'Alice Roe',
+      candidateEmail: 'alice@example.com',
+      currentModule: 'reading',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/student/sessions/sched-1/bootstrap',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(attempt).toMatchObject({
+      id: 'attempt-1',
+      scheduleId: 'sched-1',
+      candidateId: 'alice',
+      currentModule: 'reading',
+    });
+
+    const cachedAttempts = await studentAttemptRepository.getAttemptsByScheduleId('sched-1');
+    expect(cachedAttempts).toEqual([expect.objectContaining({ id: 'attempt-1' })]);
+  });
+
+  it('flushes pending mutations through the backend before saving the local cache', async () => {
+    vi.stubEnv('VITE_FEATURE_USE_BACKEND_DELIVERY', 'true');
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        schedule: buildSchedule(),
+        version: buildVersion(),
+        runtime: null,
+        attempt: buildBackendAttempt(),
+        attemptCredential: buildAttemptCredential(),
+        degradedLiveMode: false,
+      }),
+    ).mockResolvedValueOnce(
+      jsonResponse({
+        attempt: buildBackendAttempt({
+          answers: { q1: 'A' },
+          updatedAt: '2026-01-01T09:01:00.000Z',
+          revision: 2,
+        }),
+        appliedMutationCount: 1,
+        serverAcceptedThroughSeq: 1,
+      }),
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const attempt = await studentAttemptRepository.createAttempt({
+      scheduleId: 'sched-1',
+      studentKey: 'student-sched-1-alice',
+      examId: 'exam-1',
+      examTitle: 'Mock Exam',
+      candidateId: 'alice',
+      candidateName: 'Alice Roe',
+      candidateEmail: 'alice@example.com',
+      currentModule: 'reading',
+    });
+
+    const mutations: StudentAttemptMutation[] = [
+      {
+        id: 'mutation-1',
+        attemptId: attempt.id,
+        scheduleId: attempt.scheduleId,
+        timestamp: '2026-01-01T09:00:30.000Z',
+        type: 'answer',
+        payload: { questionId: 'q1', value: 'A' },
+      },
+    ];
+
+    await studentAttemptRepository.savePendingMutations(attempt.id, mutations);
+    await studentAttemptRepository.saveAttempt({
+      ...attempt,
+      answers: { q1: 'A' },
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/student/sessions/sched-1/mutations:batch',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual(
+      expect.objectContaining({
+        attemptId: attempt.id,
+        studentKey: 'student-sched-1-alice',
+        mutations: [
+          expect.objectContaining({
+            id: 'mutation-1',
+            mutationType: 'answer',
+            payload: { questionId: 'q1', value: 'A' },
+            seq: 1,
+          }),
+        ],
+      }),
+    );
+    expect(await studentAttemptRepository.getPendingMutations(attempt.id)).toEqual(mutations);
+
+    await studentAttemptRepository.clearPendingMutations(attempt.id);
+    const cachedAttempts = await studentAttemptRepository.getAttemptsByScheduleId('sched-1');
+    expect(cachedAttempts[0]?.answers).toEqual({ q1: 'A' });
+  });
+
+  it('sends the server-issued attempt bearer token on mutation and heartbeat calls, then rotates it from refresh responses', async () => {
+    vi.stubEnv('VITE_FEATURE_USE_BACKEND_DELIVERY', 'true');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schedule: buildSchedule(),
+          version: buildVersion(),
+          runtime: null,
+          attempt: buildBackendAttempt(),
+          attemptCredential: {
+            attemptToken: 'attempt-token-1',
+            expiresAt: '2026-01-01T09:15:00.000Z',
+          },
+          degradedLiveMode: false,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          attempt: buildBackendAttempt({
+            answers: { q1: 'A' },
+            updatedAt: '2026-01-01T09:01:00.000Z',
+            revision: 2,
+          }),
+          appliedMutationCount: 1,
+          serverAcceptedThroughSeq: 1,
+          refreshedAttemptCredential: {
+            attemptToken: 'attempt-token-2',
+            expiresAt: '2026-01-01T09:20:00.000Z',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          attempt: buildBackendAttempt({
+            integrity: {
+              preCheck: null,
+              deviceFingerprintHash: null,
+              lastDisconnectAt: null,
+              lastReconnectAt: null,
+              lastHeartbeatAt: '2026-01-01T09:02:00.000Z',
+              lastHeartbeatStatus: 'ok',
+            },
+            updatedAt: '2026-01-01T09:02:00.000Z',
+            revision: 3,
+          }),
+          refreshedAttemptCredential: {
+            attemptToken: 'attempt-token-3',
+            expiresAt: '2026-01-01T09:25:00.000Z',
+          },
+        }),
+      );
+    global.fetch = fetchMock as typeof fetch;
+
+    const attempt = await studentAttemptRepository.createAttempt({
+      scheduleId: 'sched-1',
+      studentKey: 'student-sched-1-alice',
+      examId: 'exam-1',
+      examTitle: 'Mock Exam',
+      candidateId: 'alice',
+      candidateName: 'Alice Roe',
+      candidateEmail: 'alice@example.com',
+      currentModule: 'reading',
+    });
+
+    await studentAttemptRepository.savePendingMutations(attempt.id, [
+      {
+        id: 'mutation-1',
+        attemptId: attempt.id,
+        scheduleId: attempt.scheduleId,
+        timestamp: '2026-01-01T09:00:30.000Z',
+        type: 'answer',
+        payload: { questionId: 'q1', value: 'A' },
+      },
+    ]);
+    await studentAttemptRepository.saveAttempt({
+      ...attempt,
+      answers: { q1: 'A' },
+    });
+    await studentAttemptRepository.saveHeartbeatEvent({
+      id: 'heartbeat-1',
+      attemptId: attempt.id,
+      scheduleId: attempt.scheduleId,
+      timestamp: '2026-01-01T09:02:00.000Z',
+      type: 'heartbeat',
+    });
+
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer attempt-token-1',
+        }),
+      }),
+    );
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer attempt-token-2',
+        }),
+      }),
+    );
+  });
+
+  it('sends heartbeat events through the backend when delivery mode is enabled', async () => {
+    vi.stubEnv('VITE_FEATURE_USE_BACKEND_DELIVERY', 'true');
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        schedule: buildSchedule(),
+        version: buildVersion(),
+        runtime: null,
+        attempt: buildBackendAttempt(),
+        attemptCredential: buildAttemptCredential(),
+        degradedLiveMode: false,
+      }),
+    ).mockResolvedValueOnce(
+      jsonResponse(
+        {
+          attempt: buildBackendAttempt({
+            integrity: {
+              preCheck: null,
+              deviceFingerprintHash: null,
+              lastDisconnectAt: null,
+              lastReconnectAt: null,
+              lastHeartbeatAt: '2026-01-01T09:02:00.000Z',
+              lastHeartbeatStatus: 'ok',
+            },
+            updatedAt: '2026-01-01T09:02:00.000Z',
+          }),
+        },
+      ),
+    );
+    global.fetch = fetchMock as typeof fetch;
+
+    const attempt = await studentAttemptRepository.createAttempt({
+      scheduleId: 'sched-1',
+      studentKey: 'student-sched-1-alice',
+      examId: 'exam-1',
+      examTitle: 'Mock Exam',
+      candidateId: 'alice',
+      candidateName: 'Alice Roe',
+      candidateEmail: 'alice@example.com',
+      currentModule: 'reading',
+    });
+
+    await studentAttemptRepository.saveHeartbeatEvent({
+      id: 'heartbeat-1',
+      attemptId: attempt.id,
+      scheduleId: attempt.scheduleId,
+      timestamp: '2026-01-01T09:02:00.000Z',
+      type: 'heartbeat',
+      payload: { latencyMs: 120 },
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/student/sessions/sched-1/heartbeat',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const storedEvents = await studentAttemptRepository.getHeartbeatEvents(attempt.id);
+    expect(storedEvents).toEqual([
+      expect.objectContaining({
+        id: 'heartbeat-1',
+        type: 'heartbeat',
+      }),
+    ]);
+  });
+
+  it('surfaces backend bootstrap failures instead of silently creating a local attempt', async () => {
+    vi.stubEnv('VITE_FEATURE_USE_BACKEND_DELIVERY', 'true');
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: 'delivery offline' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as typeof fetch;
+
+    await expect(
+      studentAttemptRepository.createAttempt({
+        scheduleId: 'sched-1',
+        studentKey: 'student-sched-1-alice',
+        examId: 'exam-1',
+        examTitle: 'Mock Exam',
+        candidateId: 'alice',
+        candidateName: 'Alice Roe',
+        candidateEmail: 'alice@example.com',
+        currentModule: 'reading',
+      }),
+    ).rejects.toThrow('delivery offline');
+
+    expect(await studentAttemptRepository.getAttemptsByScheduleId('sched-1')).toEqual([]);
+  });
+});

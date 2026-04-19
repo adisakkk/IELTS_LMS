@@ -3,6 +3,7 @@ import { ExamState } from '../../types';
 import { Bold, Italic, Underline, AlignLeft, AlignCenter, List, Undo, Redo, ArrowLeftRight, Check, X, AlertTriangle } from 'lucide-react';
 import { getWritingTaskContent } from '../../utils/writingTaskUtils';
 import { MIN_HEIGHTS, CHAR_HEIGHT_PX, WRITING } from '../../constants/uiConstants';
+import { saveStudentAuditEvent } from '../../services/studentAuditService';
 
 interface StudentWritingProps {
   state: ExamState;
@@ -13,13 +14,21 @@ interface StudentWritingProps {
   onNavigate: (id: string) => void;
   timeRemaining?: number | undefined;
   onTimeExpired?: (() => void) | undefined;
+  security?: {
+    preventAutofill: boolean;
+    preventAutocorrect: boolean;
+  } | undefined;
+  sessionId?: string | undefined;
+  studentId?: string | undefined;
 }
 
-export function StudentWriting({ state, writingAnswers, onWritingChange, onSubmit, currentQuestionId, onNavigate, timeRemaining, onTimeExpired }: StudentWritingProps) {
+export function StudentWriting({ state, writingAnswers, onWritingChange, onSubmit, currentQuestionId, onNavigate, timeRemaining, onTimeExpired, security = { preventAutofill: false, preventAutocorrect: false }, sessionId, studentId }: StudentWritingProps) {
   const writingConfig = state.config.sections.writing;
   const [activeTaskId, setActiveTaskId] = useState<string>(currentQuestionId || writingConfig.tasks[0]?.id || 'task1');
   const [leftWidth, setLeftWidth] = useState(50);
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastKeydownRef = useRef<number>(0);
+  const previousValueRef = useRef<string>('');
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   const handleDrag = (e: React.MouseEvent | React.TouchEvent) => {
@@ -88,6 +97,82 @@ export function StudentWriting({ state, writingAnswers, onWritingChange, onSubmi
       onTimeExpired?.();
     }
   }, [timeRemaining, onTimeExpired]);
+
+  // Add input protection event listeners to the editor
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const handleBeforeInput = (event: InputEvent) => {
+      if (event.inputType === 'insertReplacementText') {
+        saveStudentAuditEvent(
+          sessionId,
+          'AUTOFILL_SUSPECTED',
+          {
+            inputType: event.inputType,
+            data: event.data,
+            target: 'writing-editor',
+          },
+          studentId,
+        );
+      }
+    };
+
+    const handleInput = (event: Event) => {
+      const target = event.target as HTMLDivElement;
+      const newValue = target.innerHTML;
+      const previousValue = previousValueRef.current;
+      
+      const textLength = newValue.replace(/<[^>]*>/g, '').length;
+      const previousTextLength = previousValue.replace(/<[^>]*>/g, '').length;
+      const textChange = Math.abs(textLength - previousTextLength);
+      const timeSinceKeydown = Date.now() - lastKeydownRef.current;
+      
+      if (textChange > 50 && timeSinceKeydown > 500) {
+        saveStudentAuditEvent(
+          sessionId,
+          'REPLACEMENT_SUSPECTED',
+          {
+            previousLength: previousTextLength,
+            newLength: textLength,
+            timeSinceKeydown,
+            target: 'writing-editor',
+          },
+          studentId,
+        );
+      }
+      
+      previousValueRef.current = newValue;
+    };
+
+    const handleKeydown = () => {
+      lastKeydownRef.current = Date.now();
+    };
+
+    const handlePaste = (event: ClipboardEvent) => {
+      saveStudentAuditEvent(
+        sessionId,
+        'PASTE_BLOCKED',
+        {
+          target: 'writing-editor',
+          targetType: 'contentEditable',
+        },
+        studentId,
+      );
+    };
+
+    editor.addEventListener('beforeinput', handleBeforeInput);
+    editor.addEventListener('input', handleInput);
+    editor.addEventListener('keydown', handleKeydown);
+    editor.addEventListener('paste', handlePaste);
+
+    return () => {
+      editor.removeEventListener('beforeinput', handleBeforeInput);
+      editor.removeEventListener('input', handleInput);
+      editor.removeEventListener('keydown', handleKeydown);
+      editor.removeEventListener('paste', handlePaste);
+    };
+  }, [sessionId, studentId]);
 
   const resolvedTimeRemaining = timeRemaining ?? writingConfig.duration * 60;
 
@@ -293,7 +378,9 @@ export function StudentWriting({ state, writingAnswers, onWritingChange, onSubmi
               className="flex-1 w-full p-4 md:p-6 lg:p-8 outline-none text-base md:text-lg leading-relaxed text-gray-800 placeholder:text-gray-200 font-serif overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: currentText }}
               style={{ minHeight: MIN_HEIGHTS.WRITING_EDITOR }}
-              spellCheck="false"
+              spellCheck={!security.preventAutocorrect}
+              autoCorrect={security.preventAutocorrect ? 'off' : 'on'}
+              autoCapitalize={security.preventAutocorrect ? 'off' : 'on'}
             />
             
             <div className="border-t border-gray-200 p-3 md:p-5 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs md:text-sm flex-shrink-0">

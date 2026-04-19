@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Settings, Lock, Info } from 'lucide-react';
+import { Shield, Settings, Lock, Info, AlertTriangle } from 'lucide-react';
 import type { ExamConfig } from '../../../types';
 
 interface SecurityTabProps {
@@ -20,6 +20,20 @@ export function SecurityTab({ config, onChange }: SecurityTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Security Warning Banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <h4 className="text-sm font-semibold text-amber-900 mb-1">Browser-Based Security Limitations</h4>
+          <p className="text-xs text-amber-800 leading-relaxed">
+            These measures provide deterrence and auditability but cannot guarantee complete security. 
+            Browser JavaScript can be bypassed by technical users. For high-stakes exams, consider hybrid 
+            approaches combining client-side monitoring with server-side validation and human proctor oversight. 
+            See the security model documentation for details.
+          </p>
+        </div>
+      </div>
+
       <section className="space-y-4">
         <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
           <Shield size={16} className="text-blue-500" /> Proctoring Control

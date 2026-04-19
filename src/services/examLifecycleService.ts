@@ -34,6 +34,16 @@ import {
   getListeningTotalQuestions
 } from '../utils/examUtils';
 import { getWritingTaskContent } from '../utils/writingTaskUtils';
+import {
+  backendDelete,
+  backendGet,
+  backendPatch,
+  backendPost,
+  getExamRevision,
+  isBackendBuilderEnabled,
+  mapBackendExamVersion,
+  rememberExamRevision,
+} from './backendBridge';
 
 /**
  * Valid status transitions with guards
@@ -89,6 +99,20 @@ function generateId(prefix: string): string {
  */
 export class ExamLifecycleService {
   constructor(private repository: IExamRepository = examRepository) {}
+
+  private async ensureBackendExamRevision(examId: string): Promise<number | null> {
+    const cached = getExamRevision(examId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const exam = await this.repository.getExamById(examId);
+    if (!exam) {
+      return null;
+    }
+
+    return getExamRevision(examId) ?? null;
+  }
   
   /**
    * Create a new exam
@@ -99,6 +123,40 @@ export class ExamLifecycleService {
     initialState: ExamState,
     owner: string = 'System'
   ): Promise<TransitionResult> {
+    if (isBackendBuilderEnabled()) {
+      try {
+        const slug = generateSlug(title);
+        const createdExam = await backendPost<any>('/v1/exams', {
+          slug,
+          title,
+          examType: type,
+          visibility: 'organization',
+        });
+
+        rememberExamRevision(createdExam.id, createdExam.revision);
+
+        const savedVersion = await backendPatch<any>(`/v1/exams/${createdExam.id}/draft`, {
+          contentSnapshot: initialState,
+          configSnapshot: initialState.config,
+          revision: getExamRevision(createdExam.id) ?? createdExam.revision ?? 0,
+        });
+
+        const exam = await this.repository.getExamById(createdExam.id);
+        const version = savedVersion ? mapBackendExamVersion(savedVersion) : null;
+
+        return {
+          success: true,
+          exam: exam ?? undefined,
+          version: version ?? undefined,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create exam',
+        };
+      }
+    }
+
     const examId = generateId('exam');
     const slug = generateSlug(title);
     const now = new Date().toISOString();
@@ -176,6 +234,34 @@ export class ExamLifecycleService {
     content: ExamState,
     actor: string = 'System'
   ): Promise<TransitionResult> {
+    if (isBackendBuilderEnabled()) {
+      try {
+        const revision = await this.ensureBackendExamRevision(examId);
+        if (revision === null) {
+          return { success: false, error: 'Exam not found' };
+        }
+
+        const savedVersion = await backendPatch<any>(`/v1/exams/${examId}/draft`, {
+          contentSnapshot: content,
+          configSnapshot: content.config,
+          revision,
+        });
+        const exam = await this.repository.getExamById(examId);
+        const version = savedVersion ? mapBackendExamVersion(savedVersion) : null;
+
+        return {
+          success: true,
+          exam: exam ?? undefined,
+          version: version ?? undefined,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to save draft',
+        };
+      }
+    }
+
     const exam = await this.repository.getExamById(examId);
     if (!exam) {
       return { success: false, error: 'Exam not found' };
@@ -260,6 +346,43 @@ export class ExamLifecycleService {
     if (!exam) {
       return { success: false, error: 'Exam not found' };
     }
+
+    if (isBackendBuilderEnabled()) {
+      if (toStatus === 'published') {
+        return this.publishExam(examId, actor, notes);
+      }
+
+      // Check if transition is allowed before calling the backend.
+      if (!canTransition(exam.status, toStatus)) {
+        return {
+          success: false,
+          error: `Cannot transition from ${exam.status} to ${toStatus}`,
+        };
+      }
+
+      try {
+        const revision = await this.ensureBackendExamRevision(examId);
+        if (revision === null) {
+          return { success: false, error: 'Exam not found' };
+        }
+
+        await backendPatch(`/v1/exams/${examId}`, {
+          status: toStatus,
+          revision,
+        });
+
+        const updatedExam = await this.repository.getExamById(examId);
+        return {
+          success: true,
+          exam: updatedExam ?? undefined,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update exam',
+        };
+      }
+    }
     
     // Check if transition is allowed
     if (!canTransition(exam.status, toStatus)) {
@@ -338,6 +461,33 @@ export class ExamLifecycleService {
     actor: string = 'System',
     publishNotes?: string
   ): Promise<TransitionResult> {
+    if (isBackendBuilderEnabled()) {
+      try {
+        const revision = await this.ensureBackendExamRevision(examId);
+        if (revision === null) {
+          return { success: false, error: 'Exam not found' };
+        }
+
+        const publishedVersion = await backendPost<any>(`/v1/exams/${examId}/publish`, {
+          publishNotes,
+          revision,
+        });
+        const exam = await this.repository.getExamById(examId);
+        const version = publishedVersion ? mapBackendExamVersion(publishedVersion) : null;
+
+        return {
+          success: true,
+          exam: exam ?? undefined,
+          version: version ?? undefined,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to publish exam',
+        };
+      }
+    }
+
     const exam = await this.repository.getExamById(examId);
     if (!exam) {
       return { success: false, error: 'Exam not found' };
@@ -614,6 +764,18 @@ export class ExamLifecycleService {
     examId: string,
     actor: string = 'System'
   ): Promise<TransitionResult> {
+    if (isBackendBuilderEnabled()) {
+      try {
+        await backendDelete(`/v1/exams/${examId}`);
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete exam',
+        };
+      }
+    }
+
     const exam = await this.repository.getExamById(examId);
     if (!exam) {
       return { success: false, error: 'Exam not found' };
@@ -653,6 +815,46 @@ export class ExamLifecycleService {
    * Check if exam is ready for publication with comprehensive validation
    */
   async getPublishReadiness(examId: string): Promise<PublishReadiness> {
+    if (isBackendBuilderEnabled()) {
+      try {
+        const summary = await backendGet<{
+          canPublish: boolean;
+          errors: Array<{ field: string; message: string }>;
+          warnings: Array<{ field: string; message: string }>;
+        }>(`/v1/exams/${examId}/validation`);
+
+        return {
+          canPublish: summary.canPublish,
+          errors: summary.errors.map((error) => ({
+            field: error.field,
+            message: error.message,
+            severity: 'error',
+          })),
+          warnings: summary.warnings,
+          missingFields: summary.errors.map((error) => error.field),
+          questionCounts: {
+            reading: 0,
+            listening: 0,
+            total: 0,
+          },
+        };
+      } catch (error) {
+        return {
+          canPublish: false,
+          errors: [
+            {
+              field: 'exam',
+              message: error instanceof Error ? error.message : 'Failed to validate exam',
+              severity: 'error',
+            },
+          ],
+          warnings: [],
+          missingFields: ['exam'],
+          questionCounts: { reading: 0, listening: 0, total: 0 },
+        };
+      }
+    }
+
     const exam = await this.repository.getExamById(examId);
     if (!exam) {
       return {

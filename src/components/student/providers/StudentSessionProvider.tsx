@@ -5,6 +5,7 @@
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { ExamConfig } from '../../../types';
+import { logger } from '../../../utils/logger';
 
 export type ExamPhase = 'pre-check' | 'lobby' | 'exam' | 'post-exam';
 
@@ -172,7 +173,7 @@ export function StudentSessionProvider({
       try {
         await elem.requestFullscreen();
       } catch (err) {
-        console.error(`Error attempting to enable full-screen mode: ${err}`);
+        logger.error(`Error attempting to enable full-screen mode: ${err}`);
       }
     }
   }, []);

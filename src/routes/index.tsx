@@ -1,8 +1,13 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { Navigate, createBrowserRouter } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { ErrorSurface } from '../components/ui/ErrorSurface';
+import { ActivateAccountPage } from '../features/auth/ActivateAccountPage';
 import { LoginPage } from '../features/auth/LoginPage';
+import { PasswordResetCompletePage } from '../features/auth/PasswordResetCompletePage';
+import { PasswordResetRequestPage } from '../features/auth/PasswordResetRequestPage';
+import { RequireAuth } from '../features/auth/RequireAuth';
+import { resolveRoleLandingPath, useAuthSession } from '../features/auth/authSession';
 
 const AdminRoot = lazy(() =>
   import('../features/admin/routes/AdminRoot').then((module) => ({
@@ -64,6 +69,11 @@ const StudentSessionRoute = lazy(() =>
     default: module.StudentSessionRoute,
   })),
 );
+const StudentRegistrationRoute = lazy(() =>
+  import('../features/student/routes/StudentRegistrationRoute').then((module) => ({
+    default: module.StudentRegistrationRoute,
+  })),
+);
 
 function RouteLoadingFallback() {
   return (
@@ -107,10 +117,35 @@ function NotFoundRoute() {
   );
 }
 
+function AdminIndexRedirect() {
+  const { session } = useAuthSession();
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={resolveRoleLandingPath(session.user.role)} replace />;
+}
+
+function withAuth(element: React.ReactNode, allowedRoles?: Array<'admin' | 'builder' | 'proctor' | 'grader' | 'student'>) {
+  return <RequireAuth allowedRoles={allowedRoles}>{element}</RequireAuth>;
+}
+
 export const appRoutes = [
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/activate',
+    element: <ActivateAccountPage />,
+  },
+  {
+    path: '/password/reset',
+    element: <PasswordResetRequestPage />,
+  },
+  {
+    path: '/password/reset/complete',
+    element: <PasswordResetCompletePage />,
   },
   {
     path: '/',
@@ -122,109 +157,113 @@ export const appRoutes = [
       },
       {
         path: 'admin',
-        element: (
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <AdminRoot />
           </Suspense>
-        ),
+        ), ['admin', 'builder', 'grader']),
         children: [
           {
             index: true,
-            element: (
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <AdminExamsRoute />
-              </Suspense>
-            ),
+            element: <AdminIndexRedirect />,
           },
           {
             path: 'exams',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminExamsRoute />
               </Suspense>
-            ),
+            ), ['admin', 'builder']),
           },
           {
             path: 'library',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminLibraryRoute />
               </Suspense>
-            ),
+            ), ['admin', 'builder']),
           },
           {
             path: 'scheduling',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminSchedulingRoute />
               </Suspense>
-            ),
+            ), ['admin', 'builder', 'grader']),
           },
           {
             path: 'grading',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminGradingRoute />
               </Suspense>
-            ),
+            ), ['admin', 'grader']),
           },
           {
             path: 'results',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminResultsRoute />
               </Suspense>
-            ),
+            ), ['admin', 'grader']),
           },
           {
             path: 'settings',
-            element: (
+            element: withAuth((
               <Suspense fallback={<RouteLoadingFallback />}>
                 <AdminSettingsRoute />
               </Suspense>
-            ),
+            ), ['admin', 'builder']),
           },
         ],
       },
       {
         path: 'builder/:examId',
-        element: (
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <ExamConfigRoute />
           </Suspense>
-        ),
+        ), ['admin', 'builder']),
       },
       {
         path: 'builder/:examId/builder',
-        element: (
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <BuilderRoot />
           </Suspense>
-        ),
+        ), ['admin', 'builder']),
       },
       {
         path: 'builder/:examId/review',
-        element: (
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <ExamReviewRoute />
           </Suspense>
-        ),
+        ), ['admin', 'builder']),
       },
       {
         path: 'proctor',
-        element: (
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <ProctorRoot />
+          </Suspense>
+        ), ['admin', 'proctor']),
+      },
+      {
+        path: 'student/:scheduleId/register',
+        element: (
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <StudentRegistrationRoute />
           </Suspense>
         ),
       },
       {
-        path: 'student/:scheduleId',
-        element: (
+        path: 'student/:scheduleId/:studentId?',
+        element: withAuth((
           <Suspense fallback={<RouteLoadingFallback />}>
             <StudentSessionRoute />
           </Suspense>
-        ),
+        ), ['student']),
       },
       {
         path: '*',

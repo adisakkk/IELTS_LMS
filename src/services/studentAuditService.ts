@@ -15,6 +15,13 @@ const auditActions = new Set<AuditActionType>([
   'DEVICE_CONTINUITY_FAILED',
   'CLIPBOARD_BLOCKED',
   'CONTEXT_MENU_BLOCKED',
+  'AUTOFILL_SUSPECTED',
+  'PASTE_BLOCKED',
+  'REPLACEMENT_SUSPECTED',
+  'SCREEN_CHECK_UNSUPPORTED',
+  'SCREEN_CHECK_PERMISSION_DENIED',
+  'VIOLATION_DETECTED',
+  'ALERT_ACKNOWLEDGED',
 ]);
 
 function resolveActionType(event: string): AuditActionType {
@@ -29,6 +36,7 @@ export async function saveStudentAuditEvent(
   sessionId: string | undefined,
   event: string,
   payload?: Record<string, unknown>,
+  targetStudentId?: string,
 ): Promise<void> {
   if (!sessionId) {
     return;
@@ -39,6 +47,7 @@ export async function saveStudentAuditEvent(
     timestamp: new Date().toISOString(),
     actor: 'student-system',
     actionType: resolveActionType(event),
+    targetStudentId,
     sessionId,
     payload: {
       event,

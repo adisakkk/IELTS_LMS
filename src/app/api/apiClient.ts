@@ -31,6 +31,38 @@ export interface ApiResponse<T = unknown> {
 
 type StatusError = Error & { statusCode?: number };
 
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  const match = document.cookie
+    .split(';')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(prefix));
+
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function getCsrfCookieToken(): string | null {
+  const configuredName = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME;
+  const cookieNames = [
+    typeof configuredName === 'string' ? configuredName : null,
+    '__Host-csrf',
+    'csrf',
+  ].filter((value): value is string => Boolean(value));
+
+  for (const cookieName of cookieNames) {
+    const token = readCookie(cookieName);
+    if (token) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
 class ApiClient {
   private baseURL: string;
   private defaultHeaders: Record<string, string>;
@@ -49,6 +81,24 @@ class ApiClient {
    */
   setDefaultHeaders(headers: Record<string, string>): void {
     this.defaultHeaders = { ...this.defaultHeaders, ...headers };
+  }
+
+  /**
+   * Set CSRF token header for cookie-authenticated mutations.
+   */
+  setCsrfToken(token: string): void {
+    this.defaultHeaders = {
+      ...this.defaultHeaders,
+      'x-csrf-token': token,
+    };
+  }
+
+  /**
+   * Clear CSRF token header.
+   */
+  clearCsrfToken(): void {
+    const { 'x-csrf-token': _csrf, ...rest } = this.defaultHeaders;
+    this.defaultHeaders = rest;
   }
 
   /**
@@ -100,9 +150,22 @@ class ApiClient {
           signal.addEventListener('abort', () => controller.abort(), { once: true });
         }
 
+        const requestHeaders = { ...this.defaultHeaders, ...headers };
+        if (
+          method !== 'GET' &&
+          method !== 'HEAD' &&
+          requestHeaders['x-csrf-token'] === undefined
+        ) {
+          const cookieToken = getCsrfCookieToken();
+          if (cookieToken) {
+            requestHeaders['x-csrf-token'] = cookieToken;
+          }
+        }
+
         const requestInit: RequestInit = {
           method,
-          headers: { ...this.defaultHeaders, ...headers },
+          credentials: 'same-origin',
+          headers: requestHeaders,
           signal: controller.signal,
         };
 

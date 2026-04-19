@@ -1,11 +1,40 @@
 node_modules/
+backend/target/
+backend/.data/
 build/
 dist/
 coverage/
-.DS_Store
 *.log
 .env*
 !.env.example
 
 *storybook.log
 storybook-static
+e2e/.generated/
+
+# Railway deployment
+.railway/
+
+# Docker
+*.tar
+*.tar.gz
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

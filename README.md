@@ -35,6 +35,18 @@ npm run test:run
 npm run build
 ```
 
+## Full-Stack Dev
+
+```bash
+cd backend
+make db-up
+make api
+make worker
+```
+
+- The frontend dev server now proxies `/api/*` to `http://127.0.0.1:4000` by default.
+- Override the proxy target with `VITE_BACKEND_API_URL` when the backend runs elsewhere.
+
 ## Working Rules
 
 - Treat route behavior as the source of truth.

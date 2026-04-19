@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { saveStudentAuditEvent } from '@services/studentAuditService';
 import { ExamConfig, ViolationSeverity } from '../../../types';
+import { useStudentAttempt } from './StudentAttemptProvider';
 import { useStudentRuntime } from './StudentRuntimeProvider';
 
 interface ProctoringContextValue {
@@ -36,9 +37,16 @@ export function ProctoringProvider({
   scheduleId,
 }: ProctoringProviderProps) {
   const { state: runtimeState, actions: runtimeActions } = useStudentRuntime();
+  const { state: attemptState } = useStudentAttempt();
   const cooldownByTypeRef = useRef<Record<string, number>>({});
   const fullscreenReentryAttempts = useRef(0);
   const violationCooldownMs = 5_000;
+  const violationCountsRef = useRef<Record<ViolationSeverity, number>>({
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
+  });
 
   const handleViolation = useCallback((
     type: string,
@@ -53,12 +61,108 @@ export function ProctoringProvider({
     }
 
     cooldownByTypeRef.current[type] = now;
+    
+    // Increment violation count for severity
+    violationCountsRef.current[severity]++;
+    
+    const thresholds = config.security.severityThresholds;
+    
+    // Check severity thresholds
+    if (severity === 'critical' || thresholds?.criticalAction === 'terminate') {
+      // Always terminate on critical
+      runtimeActions.addViolation(type, severity, message);
+      void saveStudentAuditEvent(
+        scheduleId,
+        'VIOLATION_DETECTED',
+        {
+          severity,
+          message,
+          violationType: type,
+          action: 'terminate',
+        },
+        attemptState.attemptId ?? undefined,
+      );
+      runtimeActions.terminateExam();
+      return;
+    }
+    
+    if (severity === 'high') {
+      const highLimit = thresholds?.highLimit ?? 2;
+      if (violationCountsRef.current.high >= highLimit) {
+        runtimeActions.addViolation(type, severity, message);
+        void saveStudentAuditEvent(
+          scheduleId,
+          'VIOLATION_DETECTED',
+          {
+            severity,
+            message,
+            violationType: type,
+            count: violationCountsRef.current.high,
+            threshold: highLimit,
+            action: 'pause',
+          },
+          attemptState.attemptId ?? undefined,
+        );
+        runtimeActions.pauseExam();
+        return;
+      }
+    }
+    
+    if (severity === 'medium') {
+      const mediumLimit = thresholds?.mediumLimit ?? 3;
+      if (violationCountsRef.current.medium >= mediumLimit) {
+        runtimeActions.addViolation(type, severity, message);
+        void saveStudentAuditEvent(
+          scheduleId,
+          'VIOLATION_DETECTED',
+          {
+            severity,
+            message,
+            violationType: type,
+            count: violationCountsRef.current.medium,
+            threshold: mediumLimit,
+            action: 'warn',
+          },
+          attemptState.attemptId ?? undefined,
+        );
+        return;
+      }
+    }
+    
+    if (severity === 'low') {
+      const lowLimit = thresholds?.lowLimit ?? 5;
+      if (violationCountsRef.current.low >= lowLimit) {
+        runtimeActions.addViolation(type, severity, message);
+        void saveStudentAuditEvent(
+          scheduleId,
+          'VIOLATION_DETECTED',
+          {
+            severity,
+            message,
+            violationType: type,
+            count: violationCountsRef.current.low,
+            threshold: lowLimit,
+            action: 'warn',
+          },
+          attemptState.attemptId ?? undefined,
+        );
+        return;
+      }
+    }
+    
+    // Default: just log the violation
     runtimeActions.addViolation(type, severity, message);
-    void saveStudentAuditEvent(scheduleId, type, {
-      severity,
-      message,
-    });
-  }, [runtimeActions, scheduleId]);
+    void saveStudentAuditEvent(
+      scheduleId,
+      'VIOLATION_DETECTED',
+      {
+        severity,
+        message,
+        violationType: type,
+      },
+      attemptState.attemptId ?? undefined,
+    );
+  }, [attemptState.attemptId, config.security.severityThresholds, runtimeActions, scheduleId]);
 
   const requestFullscreen = useCallback(async (): Promise<boolean> => {
     try {
@@ -88,8 +192,17 @@ export function ProctoringProvider({
     }
 
     if (!('getScreenDetails' in window)) {
-      if (isSafariBrowser()) {
-        return;
+      // Log unsupported API as informational event
+      if (!isSafariBrowser()) {
+        void saveStudentAuditEvent(
+          scheduleId,
+          'SCREEN_CHECK_UNSUPPORTED',
+          {
+            browser: navigator.userAgent,
+            userAgent: navigator.userAgent,
+          },
+          attemptState.attemptId ?? undefined,
+        );
       }
       return;
     }
@@ -110,24 +223,40 @@ export function ProctoringProvider({
           'high',
         );
       }
-    } catch {
-      // Permission denial is non-actionable here.
+    } catch (error) {
+      // Log permission denied as informational event
+      void saveStudentAuditEvent(
+        scheduleId,
+        'SCREEN_CHECK_PERMISSION_DENIED',
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        attemptState.attemptId ?? undefined,
+      );
     }
-  }, [config.security.detectSecondaryScreen, handleViolation, runtimeState.phase]);
+  }, [config.security.detectSecondaryScreen, handleViolation, runtimeState.phase, scheduleId, attemptState.attemptId]);
 
   useEffect(() => {
     let tabSwitchDebounceTimer: number | null = null;
+    let lastTabSwitchTime = 0;
     let fullscreenReentryTimer: number | null = null;
     let secondaryScreenCheckTimer: number | null = null;
 
-    const handleVisibilityChange = () => {
+    const handleTabSwitch = (eventType: string) => {
       if (
-        !document.hidden ||
         runtimeState.phase !== 'exam' ||
         config.security.tabSwitchRule === 'none'
       ) {
         return;
       }
+
+      const now = Date.now();
+      
+      // Deduplicate events within 500ms
+      if (now - lastTabSwitchTime < 500) {
+        return;
+      }
+      lastTabSwitchTime = now;
 
       if (tabSwitchDebounceTimer) {
         window.clearTimeout(tabSwitchDebounceTimer);
@@ -137,15 +266,30 @@ export function ProctoringProvider({
         if (config.security.tabSwitchRule === 'warn') {
           handleViolation(
             'TAB_SWITCH',
-            'Tab switching detected. You must remain on the examination page at all times.',
+            `Tab switching detected via ${eventType}. You must remain on the examination page at all times.`,
             'medium',
           );
           return;
         }
 
-        handleViolation('TAB_SWITCH', 'Tab switching detected. Exam terminated.', 'critical');
+        handleViolation('TAB_SWITCH', `Tab switching detected via ${eventType}. Exam terminated.`, 'critical');
         runtimeActions.terminateExam();
       }, 500);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        return;
+      }
+      handleTabSwitch('visibilitychange');
+    };
+
+    const handleBlur = () => {
+      handleTabSwitch('blur');
+    };
+
+    const handlePageHide = () => {
+      handleTabSwitch('pagehide');
     };
 
     const handleFullscreenChange = async () => {
@@ -166,7 +310,6 @@ export function ProctoringProvider({
           'Maximum fullscreen violations exceeded. Exam terminated.',
           'critical',
         );
-        runtimeActions.terminateExam();
         return;
       }
 
@@ -206,6 +349,8 @@ export function ProctoringProvider({
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('blur', handleBlur);
+    document.addEventListener('pagehide', handlePageHide);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
     if (runtimeState.phase === 'exam' && config.security.detectSecondaryScreen) {
@@ -216,6 +361,8 @@ export function ProctoringProvider({
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('blur', handleBlur);
+      document.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       if (tabSwitchDebounceTimer) {
         window.clearTimeout(tabSwitchDebounceTimer);

@@ -342,6 +342,8 @@ const buildDefaultConfig = (
       fullscreenMaxViolations: 3,
       heartbeatIntervalSeconds: 15,
       heartbeatMissThreshold: 3,
+      heartbeatWarningThreshold: 2,
+      heartbeatHardBlockThreshold: 4,
       pauseOnOffline: true,
       bufferAnswersOffline: true,
       requireDeviceContinuityOnReconnect: true,
@@ -350,6 +352,12 @@ const buildDefaultConfig = (
         webcam: true,
         audio: true,
         screen: true
+      },
+      severityThresholds: {
+        lowLimit: 5,
+        mediumLimit: 3,
+        highLimit: 2,
+        criticalAction: 'terminate'
       }
     }
   };

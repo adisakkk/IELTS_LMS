@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ExamVersionHistory } from '../ExamVersionHistory';
 import type { ExamVersionHistoryProps } from '../../../features/admin/contracts';
@@ -88,14 +88,14 @@ describe('ExamVersionHistory', () => {
   it('shows version type indicators (draft vs published)', () => {
     render(<ExamVersionHistory {...defaultProps} />);
     
-    expect(screen.getByText(/draft 3 \(current\)/i)).toBeTruthy();
+    expect(screen.getByText(/^draft 3$/i)).toBeTruthy();
     expect(screen.getByText(/published v1/i)).toBeTruthy();
   });
 
   it('highlights current draft', () => {
     render(<ExamVersionHistory {...defaultProps} />);
     
-    const currentDraft = screen.getByText(/draft 3 \(current\)/i);
+    const currentDraft = screen.getByText(/^draft 3$/i);
     expect(currentDraft).toBeTruthy();
   });
 
@@ -115,7 +115,7 @@ describe('ExamVersionHistory', () => {
   it('has aria-current for current draft', () => {
     render(<ExamVersionHistory {...defaultProps} />);
     
-    const currentBadge = screen.getByText(/current/i);
+    const currentBadge = screen.getByText(/^current$/i);
     expect(currentBadge.getAttribute('aria-current')).toBe('true');
   });
 
@@ -133,14 +133,17 @@ describe('ExamVersionHistory', () => {
     expect(versionHistoryHeader.getAttribute('title')).toBeTruthy();
   });
 
-  it('calls onCloneExam when Clone button clicked', () => {
+  it('calls onCloneExam when confirming the clone modal', async () => {
     const onCloneExam = vi.fn();
     render(<ExamVersionHistory {...defaultProps} onCloneExam={onCloneExam} />);
     
     const cloneButton = screen.getByRole('button', { name: /clone exam/i });
     fireEvent.click(cloneButton);
+    fireEvent.click(screen.getAllByRole('button', { name: /clone exam/i })[1]);
     
-    expect(onCloneExam).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onCloneExam).toHaveBeenCalledWith('exam-1', 'Test Exam (Copy)'),
+    );
   });
 
   it('shows audit log when toggle clicked', () => {

@@ -20,6 +20,27 @@ import { Exam, SessionAuditLog, SessionNote, ViolationRule } from '../types';
 import type { ExamConfig, ModuleType } from '../types';
 import { migrateExam } from '../utils/examUtils';
 import { normalizeExamConfig } from '../constants/examDefaults';
+import {
+  backendDelete,
+  backendGet,
+  backendPatch,
+  backendPost,
+  buildCreateSchedulePayload,
+  buildUpdateExamPayload,
+  buildUpdateSchedulePayload,
+  clearExamRevision,
+  clearScheduleRevision,
+  getExamRevision,
+  getScheduleRevision,
+  isBackendBuilderEnabled,
+  isBackendNotFound,
+  isBackendSchedulingEnabled,
+  mapBackendExamEntity,
+  mapBackendExamEvent,
+  mapBackendExamVersion,
+  mapBackendRuntime,
+  mapBackendSchedule,
+} from './backendBridge';
 
 const STORAGE_KEY_EXAMS = 'ielts_exams_v2';
 const STORAGE_KEY_VERSIONS = 'ielts_exam_versions';
@@ -71,10 +92,12 @@ export interface IExamRepository {
 
   // Audit log operations
   getAuditLogsByScheduleId(scheduleId: string): Promise<SessionAuditLog[]>;
+  getAllAuditLogs(): Promise<SessionAuditLog[]>;
   saveAuditLog(log: SessionAuditLog): Promise<void>;
 
   // Session note operations
   getSessionNotesByScheduleId(scheduleId: string): Promise<SessionNote[]>;
+  getAllSessionNotes(): Promise<SessionNote[]>;
   saveSessionNote(note: SessionNote): Promise<void>;
   deleteSessionNote(noteId: string): Promise<void>;
 
@@ -326,6 +349,11 @@ export class LocalStorageExamRepository implements IExamRepository {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
+  async getAllAuditLogs(): Promise<SessionAuditLog[]> {
+    return this.getItem<SessionAuditLog>(STORAGE_KEY_AUDIT_LOGS)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
   async saveAuditLog(log: SessionAuditLog): Promise<void> {
     const logs = this.getItem<SessionAuditLog>(STORAGE_KEY_AUDIT_LOGS);
     logs.push(log);
@@ -337,6 +365,11 @@ export class LocalStorageExamRepository implements IExamRepository {
     const notes = this.getItem<SessionNote>(STORAGE_KEY_SESSION_NOTES);
     return notes
       .filter(note => note.scheduleId === scheduleId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  async getAllSessionNotes(): Promise<SessionNote[]> {
+    return this.getItem<SessionNote>(STORAGE_KEY_SESSION_NOTES)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
@@ -521,7 +554,306 @@ export class LocalStorageExamRepository implements IExamRepository {
   }
 }
 
+class BackendExamRepository implements IExamRepository {
+  async getAllExamsWithLegacyMigration(): Promise<ExamEntity[]> {
+    return this.getAllExams();
+  }
+
+  async getAllExams(): Promise<ExamEntity[]> {
+    const exams = await backendGet<any[]>('/v1/exams');
+    return exams.map(mapBackendExamEntity);
+  }
+
+  async getExamById(id: string): Promise<ExamEntity | null> {
+    try {
+      const exam = await backendGet<any>(`/v1/exams/${id}`);
+      return mapBackendExamEntity(exam);
+    } catch (error) {
+      if (isBackendNotFound(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async saveExam(exam: ExamEntity): Promise<void> {
+    const revision = getExamRevision(exam.id);
+    if (revision === undefined) {
+      throw new Error('Saving a new exam through the backend repository is not supported.');
+    }
+
+    await backendPatch(`/v1/exams/${exam.id}`, buildUpdateExamPayload(exam, revision));
+  }
+
+  async deleteExam(id: string): Promise<void> {
+    await backendDelete(`/v1/exams/${id}`);
+    clearExamRevision(id);
+  }
+
+  async getAllVersions(examId: string): Promise<ExamVersion[]> {
+    const versions = await backendGet<any[]>(`/v1/exams/${examId}/versions`);
+    return versions.map(mapBackendExamVersion);
+  }
+
+  async getVersionById(id: string): Promise<ExamVersion | null> {
+    try {
+      const version = await backendGet<any>(`/v1/versions/${id}`);
+      return mapBackendExamVersion(version);
+    } catch (error) {
+      if (isBackendNotFound(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async saveVersion(_version: ExamVersion): Promise<void> {
+    throw new Error('Saving versions directly through the backend repository is not supported.');
+  }
+
+  async getEvents(examId: string, limit = 100): Promise<ExamEvent[]> {
+    const events = await backendGet<any[]>(`/v1/exams/${examId}/events`);
+    return events.map(mapBackendExamEvent).slice(0, limit);
+  }
+
+  async saveEvent(_event: ExamEvent): Promise<void> {
+    throw new Error('Saving events directly through the backend repository is not supported.');
+  }
+
+  async getAllSchedules(): Promise<ExamSchedule[]> {
+    const schedules = await backendGet<any[]>('/v1/schedules');
+    return schedules.map(mapBackendSchedule);
+  }
+
+  async getSchedulesByExam(examId: string): Promise<ExamSchedule[]> {
+    const schedules = await this.getAllSchedules();
+    return schedules.filter((schedule) => schedule.examId === examId);
+  }
+
+  async saveSchedule(schedule: ExamSchedule): Promise<void> {
+    const revision = getScheduleRevision(schedule.id);
+
+    if (revision === undefined) {
+      await backendPost('/v1/schedules', buildCreateSchedulePayload(schedule));
+      return;
+    }
+
+    await backendPatch(
+      `/v1/schedules/${schedule.id}`,
+      buildUpdateSchedulePayload(schedule, revision),
+    );
+  }
+
+  async deleteSchedule(id: string): Promise<void> {
+    await backendDelete(`/v1/schedules/${id}`);
+    clearScheduleRevision(id);
+  }
+
+  async getRuntimeByScheduleId(scheduleId: string): Promise<ExamSessionRuntime | null> {
+    try {
+      const [schedulePayload, runtimePayload] = await Promise.all([
+        backendGet<any>(`/v1/schedules/${scheduleId}`),
+        backendGet<any>(`/v1/schedules/${scheduleId}/runtime`),
+      ]);
+
+      return mapBackendRuntime(runtimePayload, mapBackendSchedule(schedulePayload));
+    } catch (error) {
+      if (isBackendNotFound(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async saveRuntime(_runtime: ExamSessionRuntime): Promise<void> {
+    throw new Error('Saving runtimes directly through the backend repository is not supported.');
+  }
+
+  async deleteRuntime(_scheduleId: string): Promise<void> {}
+
+  async getControlEventsByScheduleId(_scheduleId: string): Promise<CohortControlEvent[]> {
+    return [];
+  }
+
+  async saveControlEvent(_event: CohortControlEvent): Promise<void> {}
+
+  async getAuditLogsByScheduleId(_scheduleId: string): Promise<SessionAuditLog[]> {
+    return [];
+  }
+
+  async getAllAuditLogs(): Promise<SessionAuditLog[]> {
+    return [];
+  }
+
+  async saveAuditLog(_log: SessionAuditLog): Promise<void> {}
+
+  async getSessionNotesByScheduleId(_scheduleId: string): Promise<SessionNote[]> {
+    return [];
+  }
+
+  async getAllSessionNotes(): Promise<SessionNote[]> {
+    return [];
+  }
+
+  async saveSessionNote(_note: SessionNote): Promise<void> {}
+
+  async deleteSessionNote(_noteId: string): Promise<void> {}
+
+  async getViolationRulesByScheduleId(_scheduleId: string): Promise<ViolationRule[]> {
+    return [];
+  }
+
+  async saveViolationRule(_rule: ViolationRule): Promise<void> {}
+
+  async deleteViolationRule(_ruleId: string): Promise<void> {}
+
+  async migrateFromLegacy(_legacyExams: Exam[]): Promise<ExamEntity[]> {
+    return this.getAllExams();
+  }
+}
+
+class HybridExamRepository implements IExamRepository {
+  constructor(
+    private readonly localRepository: LocalStorageExamRepository,
+    private readonly backendRepository: BackendExamRepository,
+  ) {}
+
+  private builderRepository(): IExamRepository {
+    return isBackendBuilderEnabled() ? this.backendRepository : this.localRepository;
+  }
+
+  private schedulingRepository(): IExamRepository {
+    return isBackendSchedulingEnabled() ? this.backendRepository : this.localRepository;
+  }
+
+  getAllExamsWithLegacyMigration(): Promise<ExamEntity[]> {
+    return this.builderRepository().getAllExamsWithLegacyMigration();
+  }
+
+  getAllExams(): Promise<ExamEntity[]> {
+    return this.builderRepository().getAllExams();
+  }
+
+  getExamById(id: string): Promise<ExamEntity | null> {
+    return this.builderRepository().getExamById(id);
+  }
+
+  saveExam(exam: ExamEntity): Promise<void> {
+    return this.builderRepository().saveExam(exam);
+  }
+
+  deleteExam(id: string): Promise<void> {
+    return this.builderRepository().deleteExam(id);
+  }
+
+  getAllVersions(examId: string): Promise<ExamVersion[]> {
+    return this.builderRepository().getAllVersions(examId);
+  }
+
+  getVersionById(id: string): Promise<ExamVersion | null> {
+    return this.builderRepository().getVersionById(id);
+  }
+
+  saveVersion(version: ExamVersion): Promise<void> {
+    return this.builderRepository().saveVersion(version);
+  }
+
+  getEvents(examId: string, limit?: number): Promise<ExamEvent[]> {
+    return this.builderRepository().getEvents(examId, limit);
+  }
+
+  saveEvent(event: ExamEvent): Promise<void> {
+    return this.builderRepository().saveEvent(event);
+  }
+
+  getAllSchedules(): Promise<ExamSchedule[]> {
+    return this.schedulingRepository().getAllSchedules();
+  }
+
+  getSchedulesByExam(examId: string): Promise<ExamSchedule[]> {
+    return this.schedulingRepository().getSchedulesByExam(examId);
+  }
+
+  saveSchedule(schedule: ExamSchedule): Promise<void> {
+    return this.schedulingRepository().saveSchedule(schedule);
+  }
+
+  deleteSchedule(id: string): Promise<void> {
+    return this.schedulingRepository().deleteSchedule(id);
+  }
+
+  getRuntimeByScheduleId(scheduleId: string): Promise<ExamSessionRuntime | null> {
+    return this.schedulingRepository().getRuntimeByScheduleId(scheduleId);
+  }
+
+  saveRuntime(runtime: ExamSessionRuntime): Promise<void> {
+    return this.localRepository.saveRuntime(runtime);
+  }
+
+  deleteRuntime(scheduleId: string): Promise<void> {
+    return this.localRepository.deleteRuntime(scheduleId);
+  }
+
+  getControlEventsByScheduleId(scheduleId: string): Promise<CohortControlEvent[]> {
+    return this.localRepository.getControlEventsByScheduleId(scheduleId);
+  }
+
+  saveControlEvent(event: CohortControlEvent): Promise<void> {
+    return this.localRepository.saveControlEvent(event);
+  }
+
+  getAuditLogsByScheduleId(scheduleId: string): Promise<SessionAuditLog[]> {
+    return this.localRepository.getAuditLogsByScheduleId(scheduleId);
+  }
+
+  getAllAuditLogs(): Promise<SessionAuditLog[]> {
+    return this.localRepository.getAllAuditLogs();
+  }
+
+  saveAuditLog(log: SessionAuditLog): Promise<void> {
+    return this.localRepository.saveAuditLog(log);
+  }
+
+  getSessionNotesByScheduleId(scheduleId: string): Promise<SessionNote[]> {
+    return this.localRepository.getSessionNotesByScheduleId(scheduleId);
+  }
+
+  getAllSessionNotes(): Promise<SessionNote[]> {
+    return this.localRepository.getAllSessionNotes();
+  }
+
+  saveSessionNote(note: SessionNote): Promise<void> {
+    return this.localRepository.saveSessionNote(note);
+  }
+
+  deleteSessionNote(noteId: string): Promise<void> {
+    return this.localRepository.deleteSessionNote(noteId);
+  }
+
+  getViolationRulesByScheduleId(scheduleId: string): Promise<ViolationRule[]> {
+    return this.localRepository.getViolationRulesByScheduleId(scheduleId);
+  }
+
+  saveViolationRule(rule: ViolationRule): Promise<void> {
+    return this.localRepository.saveViolationRule(rule);
+  }
+
+  deleteViolationRule(ruleId: string): Promise<void> {
+    return this.localRepository.deleteViolationRule(ruleId);
+  }
+
+  migrateFromLegacy(legacyExams: Exam[]): Promise<ExamEntity[]> {
+    return this.localRepository.migrateFromLegacy(legacyExams);
+  }
+}
+
 /**
  * Singleton instance for app-wide use
  */
-export const examRepository = new LocalStorageExamRepository();
+export const examRepository = new HybridExamRepository(
+  new LocalStorageExamRepository(),
+  new BackendExamRepository(),
+);

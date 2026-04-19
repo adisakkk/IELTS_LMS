@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   countAnsweredQuestions,
   countQuestionSlots,
@@ -30,6 +30,13 @@ function getBlockingCopy(reason: ReturnType<typeof useStudentRuntime>['state']['
           'The proctor has paused delivery. Your current section will resume when the cohort restarts.',
         badge: 'Paused',
         contextLabel: 'Cohort Runtime',
+      };
+    case 'proctor_paused':
+      return {
+        title: 'Individual session paused',
+        message: 'Your proctor paused this session for manual review. Wait for resume instructions.',
+        badge: 'Paused',
+        contextLabel: 'Proctor Review',
       };
     case 'not_started':
       return {
@@ -100,10 +107,43 @@ function formatRuntimeTime(seconds: number) {
 
 export function StudentApp() {
   const { state: runtimeState, actions: runtimeActions, examState, onExit } = useStudentRuntime();
-  const { actions: attemptActions } = useStudentAttempt();
+  const { actions: attemptActions, state: attemptState } = useStudentAttempt();
   const { state: uiState, actions: uiActions } = useStudentUI();
   const blockingCopy = getBlockingCopy(runtimeState.blocking.reason);
   const { setShowTimeExtensionRequest } = uiActions;
+  const [warningOpen, setWarningOpen] = useState(false);
+  const [warningMessage, setWarningMessage] = useState('');
+  const [warningSeverity, setWarningSeverity] = useState<'medium' | 'high' | 'critical'>(
+    'medium',
+  );
+  const latestPendingWarning = useMemo(() => {
+    const warnings =
+      attemptState.attempt?.violations.filter((violation) => violation.type === 'PROCTOR_WARNING') ??
+      [];
+    const latestWarning = warnings[warnings.length - 1];
+    if (!latestWarning) {
+      return null;
+    }
+
+    if (latestWarning.id === attemptState.attempt?.lastAcknowledgedWarningId) {
+      return null;
+    }
+
+    return latestWarning;
+  }, [attemptState.attempt]);
+
+  useEffect(() => {
+    if (!latestPendingWarning) {
+      setWarningOpen(false);
+      return;
+    }
+
+    setWarningMessage(latestPendingWarning.description);
+    setWarningSeverity(
+      latestPendingWarning.severity === 'low' ? 'medium' : latestPendingWarning.severity,
+    );
+    setWarningOpen(true);
+  }, [latestPendingWarning]);
   const autoSaveStatus =
     runtimeState.attemptSyncState === 'saving'
       ? 'saving'
@@ -132,18 +172,48 @@ export function StudentApp() {
     }
   };
 
-  const handleModuleSubmit = () => {
-    if (runtimeState.submitRequiresConfirmation) {
-      uiActions.setShowSubmitConfirm(true);
+  const submitRuntimeBackedAttempt = async () => {
+    await attemptActions.submitAttempt();
+    runtimeActions.setPhase('post-exam');
+  };
+
+  const submitCurrentModule = async () => {
+    if (runtimeState.runtimeBacked) {
+      await submitRuntimeBackedAttempt();
       return;
     }
 
     runtimeActions.submitModule();
   };
 
-  const confirmModuleSubmit = () => {
+  const handleModuleSubmit = async () => {
+    if (runtimeState.submitRequiresConfirmation) {
+      uiActions.setShowSubmitConfirm(true);
+      return;
+    }
+
+    await submitCurrentModule();
+  };
+
+  const confirmModuleSubmit = async () => {
     uiActions.setShowSubmitConfirm(false);
-    runtimeActions.submitModule();
+    await submitCurrentModule();
+  };
+
+  const handleAnswerChange = (questionId: string, answer: Parameters<typeof runtimeActions.setAnswer>[1]) => {
+    runtimeActions.setAnswer(questionId, answer);
+    attemptActions.persistAnswer(questionId, answer);
+  };
+
+  const handleFlagToggle = (questionId: string) => {
+    const nextFlagged = !runtimeState.flags[questionId];
+    runtimeActions.toggleFlag(questionId);
+    attemptActions.persistFlag(questionId, nextFlagged);
+  };
+
+  const handleWritingChange = (taskId: string, text: string) => {
+    runtimeActions.setWritingAnswer(taskId, text);
+    attemptActions.persistWritingAnswer(taskId, text);
   };
 
   const answeredCount = countAnsweredQuestions(runtimeState.allQuestions, runtimeState.answers);
@@ -239,6 +309,11 @@ export function StudentApp() {
         totalSectionTime={examState.config.sections[runtimeState.currentModule]?.duration * 60 || 0}
         autoSaveStatus={autoSaveStatus}
         onOpenAccessibility={() => uiActions.setShowAccessibility(true)}
+        onOpenNavigator={
+          runtimeState.currentModule === 'reading' || runtimeState.currentModule === 'listening'
+            ? () => uiActions.setShowNavigator(true)
+            : undefined
+        }
         isExamActive={runtimeState.phase === 'exam'}
       />
 
@@ -247,29 +322,29 @@ export function StudentApp() {
           <StudentReading
             state={examState}
             answers={runtimeState.answers}
-            onAnswerChange={runtimeActions.setAnswer}
+            onAnswerChange={handleAnswerChange}
             currentQuestionId={runtimeState.currentQuestionId}
             onNavigate={runtimeActions.setCurrentQuestionId}
             flags={runtimeState.flags}
-            onToggleFlag={runtimeActions.toggleFlag}
+            onToggleFlag={handleFlagToggle}
           />
         ) : null}
         {runtimeState.currentModule === 'listening' ? (
           <StudentListening
             state={examState}
             answers={runtimeState.answers}
-            onAnswerChange={runtimeActions.setAnswer}
+            onAnswerChange={handleAnswerChange}
             currentQuestionId={runtimeState.currentQuestionId}
             onNavigate={runtimeActions.setCurrentQuestionId}
             flags={runtimeState.flags}
-            onToggleFlag={runtimeActions.toggleFlag}
+            onToggleFlag={handleFlagToggle}
           />
         ) : null}
         {runtimeState.currentModule === 'writing' ? (
           <StudentWriting
             state={examState}
             writingAnswers={runtimeState.writingAnswers}
-            onWritingChange={runtimeActions.setWritingAnswer}
+            onWritingChange={handleWritingChange}
             onSubmit={handleModuleSubmit}
             currentQuestionId={runtimeState.currentQuestionId}
             onNavigate={runtimeActions.setCurrentQuestionId}
@@ -293,7 +368,9 @@ export function StudentApp() {
               {blockingCopy.contextLabel}
             </p>
             <h2 className="text-2xl font-black text-gray-900 mb-3">{blockingCopy.title}</h2>
-            <p className="text-sm text-gray-700 leading-6">{blockingCopy.message}</p>
+            <p className="text-sm text-gray-700 leading-6">
+              {runtimeState.proctorNote ?? blockingCopy.message}
+            </p>
             <div className="mt-6 flex items-center justify-center gap-3">
               <div className="px-3 py-1 rounded-sm bg-gray-50 border border-gray-100 text-xs font-bold uppercase tracking-widest text-gray-700">
                 Remaining {formatRuntimeTime(runtimeState.blocking.timeRemaining)}
@@ -334,10 +411,15 @@ export function StudentApp() {
       ) : null}
 
       <WarningOverlay
-        isOpen={false}
-        severity="medium"
-        message=""
-        onAcknowledge={() => {}}
+        isOpen={warningOpen}
+        severity={warningSeverity}
+        message={warningMessage}
+        onAcknowledge={() => {
+          if (latestPendingWarning) {
+            void attemptActions.acknowledgeProctorWarning(latestPendingWarning.id);
+          }
+          setWarningOpen(false);
+        }}
       />
 
       <HelpModal isOpen={uiState.showHelp} onClose={() => uiActions.setShowHelp(false)} />

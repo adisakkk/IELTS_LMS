@@ -163,4 +163,84 @@ describe('GradingService', () => {
     );
     expect(seededWriting).toHaveLength(2);
   });
+
+  it('schedules a pending result locally and reuses it when the release happens', async () => {
+    const schedule = createSchedule('sched-release-1');
+    await examRepository.saveSchedule(schedule);
+    await gradingService.buildGradingSessions();
+
+    const submissionResult = await gradingService.createStudentSubmission(
+      schedule.id,
+      schedule.examId,
+      schedule.publishedVersionId,
+      'STU-REL-001',
+      'Release Example',
+      'release@example.com',
+      schedule.cohortName,
+      sectionAnswers,
+    );
+    expect(submissionResult.success).toBe(true);
+
+    const submissionId = submissionResult.data!.id;
+    const startReview = await gradingService.startReview(
+      submissionId,
+      'grader-1',
+      'Taylor Grader',
+    );
+    expect(startReview.success).toBe(true);
+
+    const savedDraft = await gradingService.saveReviewDraft(
+      {
+        ...startReview.data!,
+        sectionDrafts: {
+          listening: { overallBand: 7 },
+          reading: { overallBand: 6.5 },
+          writing: {
+            task1: { overallBand: 6, wordCount: 120, gradingStatus: 'in_review' },
+            task2: { overallBand: 6.5, wordCount: 260, gradingStatus: 'in_review' },
+          },
+          speaking: { overallBand: 7 },
+        },
+        teacherSummary: {
+          strengths: ['Clear structure'],
+          improvementPriorities: ['Add more evidence'],
+          recommendedPractice: ['Timed writing drills'],
+        },
+      },
+      'grader-1',
+      'Taylor Grader',
+    );
+    expect(savedDraft.success).toBe(true);
+
+    const scheduled = await gradingService.scheduleRelease(
+      submissionId,
+      '2026-01-02T09:00:00.000Z',
+      'grader-1',
+      'Taylor Grader',
+    );
+    expect(scheduled.success).toBe(true);
+
+    const pendingResults = await gradingRepository.getStudentResultsBySubmission(submissionId);
+    expect(pendingResults).toHaveLength(1);
+    expect(pendingResults[0]).toMatchObject({
+      releaseStatus: 'ready_to_release',
+      scheduledReleaseDate: '2026-01-02T09:00:00.000Z',
+    });
+
+    const released = await gradingService.releaseResult(
+      submissionId,
+      'grader-1',
+      'Taylor Grader',
+    );
+    expect(released.success).toBe(true);
+    expect(released.data?.id).toBe(pendingResults[0].id);
+
+    const finalResults = await gradingRepository.getStudentResultsBySubmission(submissionId);
+    expect(finalResults).toHaveLength(1);
+    expect(finalResults[0]).toMatchObject({
+      id: pendingResults[0].id,
+      releaseStatus: 'released',
+      releasedBy: 'grader-1',
+    });
+  });
 });

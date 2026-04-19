@@ -1,17 +1,43 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { resolvePostLoginPath, useAuthSession } from './authSession';
 
 export function LoginPage() {
+  const { login, session, status } = useAuthSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    navigate(
+      resolvePostLoginPath(session.user.role, searchParams.get('next')),
+      { replace: true },
+    );
+  }, [navigate, searchParams, session]);
+
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
-    // Simple mock authentication - in production this would call an actual auth service
-    // Default to admin dashboard for now
-    navigate('/admin');
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const nextSession = await login(email, password);
+      navigate(
+        resolvePostLoginPath(nextSession.user.role, searchParams.get('next')),
+        { replace: true },
+      );
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Sign-in failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -54,18 +80,34 @@ export function LoginPage() {
               />
             </div>
 
+            {error ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            ) : null}
+
             <button
               type="submit"
+              disabled={isSubmitting || status === 'loading'}
               className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out"
             >
-              Sign In
+              {isSubmitting ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 space-y-2 text-center">
             <p className="text-sm text-gray-500">
-              Demo: Enter any email/password to continue
+              Use a provisioned staff or student account. Cookie session and CSRF headers are established after sign-in.
             </p>
+            <div className="flex items-center justify-center gap-3 text-sm">
+              <Link to="/password/reset" className="font-medium text-blue-700 hover:text-blue-800">
+                Forgot password?
+              </Link>
+              <span className="text-gray-300">|</span>
+              <Link to="/activate" className="font-medium text-blue-700 hover:text-blue-800">
+                Activate account
+              </Link>
+            </div>
           </div>
         </div>
       </div>

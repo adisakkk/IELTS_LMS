@@ -17,6 +17,7 @@ import {
 import { examDeliveryService } from '@services/examDeliveryService';
 import { examLifecycleService } from '@services/examLifecycleService';
 import { examRepository } from '@services/examRepository';
+import { useAuthSession } from '../../auth/authSession';
 import type { Exam, ExamConfig } from '../../../types';
 import type {
   ExamEntity,
@@ -49,6 +50,8 @@ interface AdminRootController {
 export function useAdminRootController(): AdminRootController {
   const navigate = useNavigate();
   const location = useLocation();
+  const { session } = useAuthSession();
+  const role = session?.user.role;
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [schedules, setSchedules] = useState<ExamSchedule[]>([]);
@@ -61,15 +64,34 @@ export function useAdminRootController(): AdminRootController {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navItems = useMemo<AdminNavItem[]>(
-    () => [
-      { id: 'exams', label: 'Exams', icon: BookOpen, path: '/admin/exams' },
-      { id: 'library', label: 'Library', icon: BookOpen, path: '/admin/library' },
-      { id: 'scheduling', label: 'Scheduling', icon: Calendar, path: '/admin/scheduling' },
-      { id: 'grading', label: 'Grading', icon: CheckSquare, path: '/admin/grading' },
-      { id: 'results', label: 'Results', icon: BarChart3, path: '/admin/results' },
-      { id: 'settings', label: 'Settings', icon: Settings, path: '/admin/settings' },
-    ],
-    [],
+    () => {
+      if (role === 'grader') {
+        return [
+          { id: 'grading', label: 'Grading', icon: CheckSquare, path: '/admin/grading' },
+          { id: 'results', label: 'Results', icon: BarChart3, path: '/admin/results' },
+          { id: 'scheduling', label: 'Scheduling', icon: Calendar, path: '/admin/scheduling' },
+        ];
+      }
+
+      if (role === 'builder') {
+        return [
+          { id: 'exams', label: 'Exams', icon: BookOpen, path: '/admin/exams' },
+          { id: 'library', label: 'Library', icon: BookOpen, path: '/admin/library' },
+          { id: 'scheduling', label: 'Scheduling', icon: Calendar, path: '/admin/scheduling' },
+          { id: 'settings', label: 'Settings', icon: Settings, path: '/admin/settings' },
+        ];
+      }
+
+      return [
+        { id: 'exams', label: 'Exams', icon: BookOpen, path: '/admin/exams' },
+        { id: 'library', label: 'Library', icon: BookOpen, path: '/admin/library' },
+        { id: 'scheduling', label: 'Scheduling', icon: Calendar, path: '/admin/scheduling' },
+        { id: 'grading', label: 'Grading', icon: CheckSquare, path: '/admin/grading' },
+        { id: 'results', label: 'Results', icon: BarChart3, path: '/admin/results' },
+        { id: 'settings', label: 'Settings', icon: Settings, path: '/admin/settings' },
+      ];
+    },
+    [role],
   );
 
   const currentView = useMemo<AdminNavItem['id']>(() => {
@@ -103,17 +125,31 @@ export function useAdminRootController(): AdminRootController {
     setInitError(null);
 
     try {
-      await Promise.all([
-        refreshExamData(),
+      const shouldLoadExamData = role === 'admin' || role === 'builder';
+      const shouldLoadDefaults = role === 'admin' || role === 'builder';
+      const shouldSeedFixtures = role === 'admin' || role === 'builder';
+
+      const tasks = await Promise.all([
+        shouldLoadExamData ? refreshExamData() : Promise.resolve<ExamEntity[]>([]),
         refreshScheduleData(),
-        seedDevelopmentFixtures(),
+        shouldSeedFixtures ? seedDevelopmentFixtures() : Promise.resolve(),
+        shouldLoadDefaults
+          ? adminPreferencesRepository.loadDefaults()
+          : Promise.resolve(adminPreferencesRepository.getDefaults()),
       ]);
+
+      if (!shouldLoadExamData) {
+        setLoadedExamEntities([]);
+        setExams([]);
+      }
+
+      setDefaultsState(tasks[3]);
     } catch (loadError) {
       setInitError(loadError instanceof Error ? loadError.message : 'Failed to load admin data');
     } finally {
       setIsInitialized(true);
     }
-  }, [refreshExamData, refreshScheduleData]);
+  }, [refreshExamData, refreshScheduleData, role]);
 
   useEffect(() => {
     void initialize();
@@ -121,15 +157,12 @@ export function useAdminRootController(): AdminRootController {
 
   const setDefaults = useCallback((config: ExamConfig) => {
     setDefaultsState(config);
-    adminPreferencesRepository.saveDefaults(config);
+    void adminPreferencesRepository.saveDefaults(config);
   }, []);
 
-  const handleNavigate = useCallback(
-    (mode: 'builder' | 'student' | 'admin' | 'proctor') => {
-      navigate(`/${mode}`);
-    },
-    [navigate],
-  );
+  const handleNavigate = useCallback((mode: 'builder' | 'student' | 'admin' | 'proctor') => {
+    navigate(`/${mode}`);
+  }, [navigate]);
 
   const handleEditExam = useCallback(
     (id: string) => {

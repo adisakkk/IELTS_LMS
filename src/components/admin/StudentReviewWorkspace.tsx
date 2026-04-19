@@ -13,6 +13,7 @@ import { gradingService } from '../../services/gradingService';
 import { gradingRepository } from '../../services/gradingRepository';
 import { WritingAnnotationCanvas } from './WritingAnnotationCanvas';
 import { StudentReportPreview } from './StudentReportPreview';
+import { logger } from '../../utils/logger';
 
 export interface StudentReviewWorkspaceProps {
   submissionId: string;
@@ -60,12 +61,12 @@ export const StudentReviewWorkspace = React.memo(function StudentReviewWorkspace
       const [subData, sectionsData, writingsData] = await Promise.all([
         gradingRepository.getSubmissionById(submissionId),
         gradingRepository.getSectionSubmissionsBySubmissionId(submissionId),
-        gradingRepository.getAllWritingSubmissions()
+        gradingRepository.getWritingSubmissionsBySubmissionId(submissionId)
       ]);
 
       setSubmission(subData);
       setSectionSubmissions(sectionsData);
-      setWritingSubmissions(writingsData.filter(w => w.submissionId === submissionId));
+      setWritingSubmissions(writingsData);
 
       // Load or create review draft
       const existingDraft = await gradingRepository.getReviewDraftBySubmission(submissionId);
@@ -94,7 +95,7 @@ export const StudentReviewWorkspace = React.memo(function StudentReviewWorkspace
         }
       }
     } catch (error) {
-      console.error('Failed to load submission:', error);
+      logger.error('Failed to load submission:', error);
     }
     setLoading(false);
   }, [submissionId, currentTeacherId, currentTeacherName]);
@@ -111,47 +112,64 @@ export const StudentReviewWorkspace = React.memo(function StudentReviewWorkspace
 
   const handleMarkGradingComplete = async () => {
     if (!reviewDraft) return;
-    const updatedDraft = { 
-      ...reviewDraft, 
-      releaseStatus: 'grading_complete' as ReleaseStatus,
-      hasUnsavedChanges: true 
-    };
-    setReviewDraft(updatedDraft);
-    await handleSaveDraft();
+    const result = await gradingService.markGradingComplete(
+      submissionId,
+      currentTeacherId,
+      currentTeacherName
+    );
+    if (result.success && result.data) {
+      setReviewDraft(result.data);
+    }
   };
 
   const handleMarkReadyToRelease = async () => {
     if (!reviewDraft) return;
-    const updatedDraft = { 
-      ...reviewDraft, 
-      releaseStatus: 'ready_to_release' as ReleaseStatus,
-      hasUnsavedChanges: true 
-    };
-    setReviewDraft(updatedDraft);
-    await handleSaveDraft();
+    const result = await gradingService.markReadyToRelease(
+      submissionId,
+      currentTeacherId,
+      currentTeacherName
+    );
+    if (result.success && result.data) {
+      setReviewDraft(result.data);
+    }
   };
 
   const handleReleaseNow = async () => {
     if (!reviewDraft) return;
-    // TODO: Call gradingService.releaseResult when implemented
-    alert('Release functionality will be implemented in GradingService update');
+    const result = await gradingService.releaseResult(
+      submissionId,
+      currentTeacherId,
+      currentTeacherName
+    );
+    if (result.success) {
+      await loadData();
+    }
   };
 
-  const handleScheduleRelease = (date: string) => {
+  const handleScheduleRelease = async (date: string) => {
     if (!reviewDraft) return;
-    // TODO: Call gradingService.scheduleRelease when implemented
-    alert(`Scheduled release for ${date}`);
+    const result = await gradingService.scheduleRelease(
+      submissionId,
+      date,
+      currentTeacherId,
+      currentTeacherName
+    );
+    if (result.success && result.data) {
+      setReviewDraft(result.data);
+    }
   };
 
   const handleReopen = async () => {
     if (!reviewDraft) return;
-    const updatedDraft = { 
-      ...reviewDraft, 
-      releaseStatus: 'reopened' as ReleaseStatus,
-      hasUnsavedChanges: true 
-    };
-    setReviewDraft(updatedDraft);
-    await handleSaveDraft();
+    const result = await gradingService.reopenReview(
+      submissionId,
+      currentTeacherId,
+      currentTeacherName,
+      'Manual reopen'
+    );
+    if (result.success && result.data) {
+      setReviewDraft(result.data);
+    }
   };
 
   const updateRubricAssessment = (section: 'listening' | 'reading' | 'writing' | 'speaking', assessment: Partial<RubricAssessment>, taskId?: string) => {

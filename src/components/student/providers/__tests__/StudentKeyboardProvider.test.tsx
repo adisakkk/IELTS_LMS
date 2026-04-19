@@ -3,8 +3,10 @@ import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultConfig } from '../../../../constants/examDefaults';
 import type { ExamState } from '../../../../types';
+import type { StudentAttempt } from '../../../../types/studentAttempt';
 import { KeyboardProvider } from '../StudentKeyboardProvider';
 import { ProctoringProvider } from '../StudentProctoringProvider';
+import { StudentAttemptProvider } from '../StudentAttemptProvider';
 import { StudentRuntimeProvider, useStudentRuntime } from '../StudentRuntimeProvider';
 
 function createExamState(): ExamState {
@@ -49,6 +51,49 @@ function createExamState(): ExamState {
   };
 }
 
+function createAttemptSnapshot(): StudentAttempt {
+  return {
+    id: 'attempt-1',
+    scheduleId: 'sched-1',
+    studentKey: 'student-sched-1-alice',
+    examId: 'exam-1',
+    examTitle: 'Test Exam',
+    candidateId: 'alice',
+    candidateName: 'Alice Roe',
+    candidateEmail: 'alice@example.com',
+    phase: 'exam',
+    currentModule: 'reading',
+    currentQuestionId: 'q1',
+    answers: {},
+    writingAnswers: {},
+    flags: {},
+    violations: [],
+    proctorStatus: 'active',
+    proctorNote: null,
+    proctorUpdatedAt: null,
+    proctorUpdatedBy: null,
+    lastWarningId: null,
+    lastAcknowledgedWarningId: null,
+    integrity: {
+      preCheck: null,
+      deviceFingerprintHash: null,
+      lastDisconnectAt: null,
+      lastReconnectAt: null,
+      lastHeartbeatAt: null,
+      lastHeartbeatStatus: 'idle',
+    },
+    recovery: {
+      lastRecoveredAt: null,
+      lastLocalMutationAt: null,
+      lastPersistedAt: null,
+      pendingMutationCount: 0,
+      syncState: 'saved',
+    },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
 describe('StudentKeyboardProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -57,6 +102,7 @@ describe('StudentKeyboardProvider', () => {
   function renderHarness() {
     let runtimeContext: ReturnType<typeof useStudentRuntime> | null = null;
     const state = createExamState();
+    const attemptSnapshot = createAttemptSnapshot();
 
     function Probe() {
       runtimeContext = useStudentRuntime();
@@ -70,12 +116,21 @@ describe('StudentKeyboardProvider', () => {
     }
 
     render(
-      <StudentRuntimeProvider state={state} onExit={vi.fn()}>
-        <ProctoringProvider config={state.config}>
-          <KeyboardProvider>
-            <Probe />
-          </KeyboardProvider>
-        </ProctoringProvider>
+      <StudentRuntimeProvider
+        state={state}
+        onExit={vi.fn()}
+        attemptSnapshot={attemptSnapshot}
+      >
+        <StudentAttemptProvider
+          scheduleId={attemptSnapshot.scheduleId}
+          attemptSnapshot={attemptSnapshot}
+        >
+          <ProctoringProvider config={state.config} scheduleId={attemptSnapshot.scheduleId}>
+            <KeyboardProvider>
+              <Probe />
+            </KeyboardProvider>
+          </ProctoringProvider>
+        </StudentAttemptProvider>
       </StudentRuntimeProvider>,
     );
 

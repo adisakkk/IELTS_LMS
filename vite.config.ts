@@ -5,6 +5,7 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const backendApiUrl = env['VITE_BACKEND_API_URL'] || 'http://127.0.0.1:4000';
   return {
     plugins: [
       react(), 
@@ -30,6 +31,12 @@ export default defineConfig(({mode}) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env['DISABLE_HMR'] !== 'true',
+      proxy: {
+        '/api': {
+          target: backendApiUrl,
+          changeOrigin: false,
+        },
+      },
     },
     build: {
       rollupOptions: {

@@ -21,9 +21,20 @@ interface ViolationRulePanelProps {
   currentProctor: string;
   onUpdateRules: (rules: ViolationRule[]) => void;
   onClose: () => void;
+  violationCounts?: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+  };
+  severityThresholds?: {
+    lowLimit: number;
+    mediumLimit: number;
+    highLimit: number;
+  };
 }
 
-export function ViolationRulePanel({ rules, scheduleId, currentProctor, onUpdateRules, onClose }: ViolationRulePanelProps) {
+export function ViolationRulePanel({ rules, scheduleId, currentProctor, onUpdateRules, onClose, violationCounts, severityThresholds }: ViolationRulePanelProps) {
   const [showNewRule, setShowNewRule] = useState(false);
   const [newRule, setNewRule] = useState<Partial<ViolationRule>>({
     scheduleId,
@@ -104,6 +115,16 @@ export function ViolationRulePanel({ rules, scheduleId, currentProctor, onUpdate
   };
 
   const activeRulesCount = rules.filter(r => r.isEnabled).length;
+  const defaultCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+  const counts = violationCounts || defaultCounts;
+  const thresholds = severityThresholds || { lowLimit: 5, mediumLimit: 3, highLimit: 2 };
+
+  const getSeverityProgress = (count: number, limit: number) => Math.min((count / limit) * 100, 100);
+  const getSeverityColor = (count: number, limit: number) => {
+    if (count >= limit) return 'bg-red-500';
+    if (count >= limit * 0.7) return 'bg-amber-500';
+    return 'bg-blue-500';
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -132,6 +153,67 @@ export function ViolationRulePanel({ rules, scheduleId, currentProctor, onUpdate
           New Rule
         </button>
       </div>
+
+      {/* Severity Counts Section */}
+      {(violationCounts && severityThresholds) && (
+        <div className="p-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3">Violation Counts by Severity</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-500">LOW</span>
+                <span className="text-sm font-bold text-blue-600">{counts.low}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${getSeverityColor(counts.low, thresholds.lowLimit)}`}
+                  style={{ width: `${getSeverityProgress(counts.low, thresholds.lowLimit)}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Limit: {thresholds.lowLimit}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-500">MEDIUM</span>
+                <span className="text-sm font-bold text-amber-600">{counts.medium}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${getSeverityColor(counts.medium, thresholds.mediumLimit)}`}
+                  style={{ width: `${getSeverityProgress(counts.medium, thresholds.mediumLimit)}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Limit: {thresholds.mediumLimit}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-500">HIGH</span>
+                <span className="text-sm font-bold text-red-600">{counts.high}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${getSeverityColor(counts.high, thresholds.highLimit)}`}
+                  style={{ width: `${getSeverityProgress(counts.high, thresholds.highLimit)}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Limit: {thresholds.highLimit}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-500">CRITICAL</span>
+                <span className="text-sm font-bold text-red-800">{counts.critical}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div
+                  className="h-1.5 rounded-full bg-red-600 transition-all"
+                  style={{ width: counts.critical > 0 ? '100%' : '0%' }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Immediate</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Rule Form */}
       {showNewRule && (

@@ -1,6 +1,7 @@
 import React, { useEffect, type ReactNode } from 'react';
 import { useProctoring } from './StudentProctoringProvider';
 import { useStudentRuntime } from './StudentRuntimeProvider';
+import { saveStudentAuditEvent } from '@services/studentAuditService';
 
 interface KeyboardProviderProps {
   children: ReactNode;
@@ -47,6 +48,10 @@ function isEditingTarget(target: EventTarget | null) {
 export function KeyboardProvider({ children }: KeyboardProviderProps) {
   const { state: runtimeState, actions: runtimeActions } = useStudentRuntime();
   const { handleViolation } = useProctoring();
+
+  // Get session and student IDs from runtime state for audit logging
+  const sessionId = runtimeState.scheduleId;
+  const studentId = runtimeState.studentId;
 
   useEffect(() => {
     const handleRestrictedInteraction = (
@@ -185,6 +190,22 @@ export function KeyboardProvider({ children }: KeyboardProviderProps) {
     };
 
     const handleCopy = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Log paste attempts with metadata
+      if (event.type === 'paste') {
+        saveStudentAuditEvent(
+          sessionId,
+          'PASTE_BLOCKED',
+          {
+            targetName: target.tagName || 'unknown',
+            targetType: target.getAttribute('type') || target.tagName,
+            isContentEditable: target.isContentEditable,
+          },
+          studentId,
+        );
+      }
+      
       handleRestrictedInteraction(
         event,
         'CLIPBOARD_BLOCKED',

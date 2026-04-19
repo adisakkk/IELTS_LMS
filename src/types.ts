@@ -544,6 +544,8 @@ export interface ExamConfig {
     fullscreenMaxViolations: number;
     heartbeatIntervalSeconds?: number | undefined;
     heartbeatMissThreshold?: number | undefined;
+    heartbeatWarningThreshold?: number | undefined;
+    heartbeatHardBlockThreshold?: number | undefined;
     pauseOnOffline?: boolean | undefined;
     bufferAnswersOffline?: boolean | undefined;
     requireDeviceContinuityOnReconnect?: boolean | undefined;
@@ -553,6 +555,12 @@ export interface ExamConfig {
       audio: boolean;
       screen: boolean;
     };
+    severityThresholds?: {
+      lowLimit: number;
+      mediumLimit: number;
+      highLimit: number;
+      criticalAction: 'terminate';
+    } | undefined;
   };
 }
 
@@ -697,6 +705,7 @@ export type AuditActionType =
   | 'SESSION_END'
   | 'SECTION_START'
   | 'SECTION_END'
+  | 'VIOLATION_DETECTED'
   | 'STUDENT_WARN'
   | 'STUDENT_PAUSE'
   | 'STUDENT_RESUME'
@@ -716,6 +725,11 @@ export type AuditActionType =
   | 'DEVICE_CONTINUITY_FAILED'
   | 'CLIPBOARD_BLOCKED'
   | 'CONTEXT_MENU_BLOCKED'
+  | 'AUTOFILL_SUSPECTED'
+  | 'PASTE_BLOCKED'
+  | 'REPLACEMENT_SUSPECTED'
+  | 'SCREEN_CHECK_UNSUPPORTED'
+  | 'SCREEN_CHECK_PERMISSION_DENIED'
   | 'AUTO_ACTION';
 
 export interface SessionAuditLog {

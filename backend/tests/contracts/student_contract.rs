@@ -1,0 +1,801 @@
+#[path = "../support/postgres.rs"]
+mod postgres;
+
+use axum::{
+    body::{to_bytes, Body},
+    http::{Request, StatusCode},
+};
+use chrono::{Duration, TimeZone, Utc};
+use serde_json::json;
+use tower::ServiceExt;
+use uuid::Uuid;
+
+use ielts_backend_api::{router::build_router, state::AppState};
+use ielts_backend_application::{builder::BuilderService, scheduling::SchedulingService};
+use ielts_backend_domain::{
+    auth::UserRole,
+    attempt::{
+        StudentBootstrapRequest, StudentHeartbeatRequest, StudentMutationBatchRequest,
+        StudentPrecheckRequest, StudentSubmitRequest,
+    },
+    exam::{CreateExamRequest, ExamType, PublishExamRequest, SaveDraftRequest, Visibility},
+    schedule::CreateScheduleRequest,
+};
+use ielts_backend_infrastructure::{
+    actor_context::{ActorContext, ActorRole},
+    config::AppConfig,
+};
+
+const DELIVERY_MIGRATIONS: &[&str] = &[
+    "0001_roles.sql",
+    "0002_rls_helpers.sql",
+    "0003_exam_core.sql",
+    "0004_library_and_defaults.sql",
+    "0005_scheduling_and_access.sql",
+    "0006_delivery.sql",
+    "0007_proctoring.sql",
+    "0008_grading_results.sql",
+    "0009_media_cache_outbox.sql",
+    "0010_auth_security.sql",
+];
+
+#[tokio::test]
+async fn get_student_session_returns_schedule_and_version_before_bootstrap() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, _student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+
+    let response = app
+        .oneshot(
+            auth.with_auth(Request::builder().uri(format!(
+                "/api/v1/student/sessions/{}?candidateId=alice",
+                schedule.id
+            )))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+
+    assert_eq!(json["success"], true);
+    assert_eq!(json["data"]["schedule"]["id"], schedule.id.to_string());
+    assert_eq!(
+        json["data"]["version"]["id"],
+        schedule.published_version_id.to_string()
+    );
+    assert_eq!(json["data"]["runtime"]["status"], "not_started");
+    assert_eq!(json["data"]["attempt"], serde_json::Value::Null);
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn precheck_persists_integrity_on_the_attempt() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+
+    let response = app
+        .oneshot(
+            auth.with_csrf(Request::builder())
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{}/precheck", schedule.id))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentPrecheckRequest {
+                        student_key: student_key.clone(),
+                        candidate_id: "alice".to_owned(),
+                        candidate_name: "Alice Roe".to_owned(),
+                        candidate_email: "alice@example.com".to_owned(),
+                        client_session_id: Uuid::new_v4(),
+                        pre_check: json!({
+                            "completedAt": "2026-01-10T08:50:00Z",
+                            "browserFamily": "chrome",
+                            "checks": [{"id": "browser", "status": "pass"}]
+                        }),
+                        device_fingerprint_hash: Some("fp-alice".to_owned()),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+
+    assert_eq!(
+        json["data"]["studentKey"],
+        student_key
+    );
+    assert_eq!(json["data"]["phase"], "lobby");
+    assert_eq!(
+        json["data"]["integrity"]["preCheck"]["completedAt"],
+        "2026-01-10T08:50:00Z"
+    );
+    assert_eq!(
+        json["data"]["integrity"]["deviceFingerprintHash"],
+        "fp-alice"
+    );
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn bootstrap_creates_or_hydrates_the_attempt_context() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+
+    let response = app
+        .oneshot(
+            auth.with_csrf(Request::builder())
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/bootstrap",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentBootstrapRequest {
+                        student_key: student_key.clone(),
+                        candidate_id: "alice".to_owned(),
+                        candidate_name: "Alice Roe".to_owned(),
+                        candidate_email: "alice@example.com".to_owned(),
+                        client_session_id: Uuid::new_v4(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+
+    assert_eq!(
+        json["data"]["attempt"]["studentKey"],
+        student_key
+    );
+    assert_eq!(json["data"]["attempt"]["phase"], "pre-check");
+    assert_eq!(json["data"]["runtime"]["status"], "not_started");
+    assert!(json["data"]["attemptCredential"]["attemptToken"].is_string());
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn mutation_batch_persists_answers_and_returns_the_server_watermark() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+    let (bootstrap, client_session_id) = bootstrap_attempt(&app, &auth, schedule.id, "alice", &student_key).await;
+    let attempt_id = Uuid::parse_str(bootstrap["data"]["attempt"]["id"].as_str().unwrap()).unwrap();
+    let attempt_token = bootstrap["data"]["attemptCredential"]["attemptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let response = app
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/mutations:batch",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentMutationBatchRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                        client_session_id,
+                        mutations: vec![
+                            ielts_backend_domain::attempt::MutationEnvelope {
+                                id: "mutation-1".to_owned(),
+                                seq: 1,
+                                timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 5, 0).unwrap(),
+                                mutation_type: "answer".to_owned(),
+                                payload: json!({"questionId": "q1", "value": "A"}),
+                            },
+                            ielts_backend_domain::attempt::MutationEnvelope {
+                                id: "mutation-2".to_owned(),
+                                seq: 2,
+                                timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 5, 5).unwrap(),
+                                mutation_type: "flag".to_owned(),
+                                payload: json!({"questionId": "q1", "value": true}),
+                            },
+                        ],
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+
+    assert_eq!(json["data"]["appliedMutationCount"], 2);
+    assert_eq!(json["data"]["serverAcceptedThroughSeq"], 2);
+    assert_eq!(json["data"]["attempt"]["answers"]["q1"], "A");
+    assert_eq!(json["data"]["attempt"]["flags"]["q1"], true);
+    assert_eq!(json["data"]["attempt"]["recovery"]["syncState"], "saved");
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn mutation_batch_replays_same_idempotency_key_and_rejects_hash_mismatch() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+    let (bootstrap, client_session_id) = bootstrap_attempt(&app, &auth, schedule.id, "alice", &student_key).await;
+    let attempt_id = Uuid::parse_str(bootstrap["data"]["attempt"]["id"].as_str().unwrap()).unwrap();
+    let attempt_token = bootstrap["data"]["attemptCredential"]["attemptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let request = StudentMutationBatchRequest {
+        attempt_id,
+        student_key: student_key.clone(),
+        client_session_id,
+        mutations: vec![
+            ielts_backend_domain::attempt::MutationEnvelope {
+                id: "mutation-1".to_owned(),
+                seq: 1,
+                timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 5, 0).unwrap(),
+                mutation_type: "answer".to_owned(),
+                payload: json!({"questionId": "q1", "value": "A"}),
+            },
+            ielts_backend_domain::attempt::MutationEnvelope {
+                id: "mutation-2".to_owned(),
+                seq: 2,
+                timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 5, 5).unwrap(),
+                mutation_type: "flag".to_owned(),
+                payload: json!({"questionId": "q1", "value": true}),
+            },
+        ],
+    };
+
+    let first = app
+        .clone()
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/mutations:batch",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "mutation-replay-1")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_json = json_body(first).await;
+
+    let replay = app
+        .clone()
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/mutations:batch",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "mutation-replay-1")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(replay.status(), StatusCode::OK);
+    let replay_json = json_body(replay).await;
+    assert_eq!(replay_json["data"], first_json["data"]);
+
+    let conflict = app
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/mutations:batch",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "mutation-replay-1")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentMutationBatchRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                        client_session_id,
+                        mutations: vec![ielts_backend_domain::attempt::MutationEnvelope {
+                            id: "mutation-3".to_owned(),
+                            seq: 3,
+                            timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 5, 10).unwrap(),
+                            mutation_type: "answer".to_owned(),
+                            payload: json!({"questionId": "q2", "value": "B"}),
+                        }],
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(conflict.status(), StatusCode::CONFLICT);
+    let conflict_json = json_body(conflict).await;
+    assert_eq!(conflict_json["error"]["code"], "CONFLICT");
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn heartbeat_records_disconnect_transitions() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+    let (bootstrap, client_session_id) = bootstrap_attempt(&app, &auth, schedule.id, "alice", &student_key).await;
+    let attempt_id = Uuid::parse_str(bootstrap["data"]["attempt"]["id"].as_str().unwrap()).unwrap();
+    let attempt_token = bootstrap["data"]["attemptCredential"]["attemptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let response = app
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/student/sessions/{}/heartbeat",
+                    schedule.id
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentHeartbeatRequest {
+                        attempt_id: Some(attempt_id),
+                        student_key: student_key.clone(),
+                        client_session_id,
+                        event_type: "disconnect".to_owned(),
+                        payload: Some(json!({"source": "browser"})),
+                        client_timestamp: Utc.with_ymd_and_hms(2026, 1, 10, 9, 6, 0).unwrap(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+
+    assert_eq!(json["data"]["attempt"]["integrity"]["lastHeartbeatStatus"], "lost");
+    assert_ne!(
+        json["data"]["attempt"]["integrity"]["lastDisconnectAt"],
+        serde_json::Value::Null
+    );
+
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM student_heartbeat_events WHERE attempt_id = $1")
+            .bind(attempt_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(event_count, 1);
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn submit_finalizes_the_attempt_idempotently() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+    let (bootstrap, _) = bootstrap_attempt(&app, &auth, schedule.id, "alice", &student_key).await;
+    let attempt_id = Uuid::parse_str(bootstrap["data"]["attempt"]["id"].as_str().unwrap()).unwrap();
+    let attempt_token = bootstrap["data"]["attemptCredential"]["attemptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let response = app
+        .clone()
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{}/submit", schedule.id))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentSubmitRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    let submission_id = json["data"]["submissionId"].as_str().unwrap().to_owned();
+
+    assert_eq!(json["data"]["attempt"]["phase"], "post-exam");
+    assert_eq!(
+        json["data"]["attempt"]["submittedAt"],
+        json["data"]["submittedAt"]
+    );
+
+    let retry = app
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{}/submit", schedule.id))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentSubmitRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(retry.status(), StatusCode::OK);
+    let retry_json = json_body(retry).await;
+    assert_eq!(retry_json["data"]["submissionId"], submission_id);
+
+    database.shutdown().await;
+}
+
+#[tokio::test]
+async fn submit_replays_cached_response_for_the_same_idempotency_key() {
+    let database = postgres::TestDatabase::new(DELIVERY_MIGRATIONS).await;
+    let schedule = seed_schedule(database.pool()).await;
+    let (auth, student_key) = create_student_auth(database.pool(), schedule.id, "alice").await;
+    let app = build_router(AppState::with_pool(
+        AppConfig::default(),
+        database.pool().clone(),
+    ));
+    let (bootstrap, _) = bootstrap_attempt(&app, &auth, schedule.id, "alice", &student_key).await;
+    let attempt_id = Uuid::parse_str(bootstrap["data"]["attempt"]["id"].as_str().unwrap()).unwrap();
+    let attempt_token = bootstrap["data"]["attemptCredential"]["attemptToken"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let first = app
+        .clone()
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{}/submit", schedule.id))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "submit-replay-1")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentSubmitRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_json = json_body(first).await;
+    let first_submission_id = first_json["data"]["submissionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let first_submitted_at = first_json["data"]["submittedAt"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    sqlx::query(
+        r#"
+        UPDATE student_attempts
+        SET final_submission = $2
+        WHERE id = $1
+        "#,
+    )
+    .bind(attempt_id)
+    .bind(json!({
+        "submissionId": "tampered-submission",
+        "submittedAt": first_submitted_at,
+        "answers": {"q99": "tampered"},
+        "writingAnswers": {},
+        "flags": {}
+    }))
+    .execute(database.pool())
+    .await
+    .unwrap();
+
+    let replay = app
+        .oneshot(
+            with_attempt_token(Request::builder(), &attempt_token)
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{}/submit", schedule.id))
+                .header("content-type", "application/json")
+                .header("idempotency-key", "submit-replay-1")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentSubmitRequest {
+                        attempt_id,
+                        student_key: student_key.clone(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(replay.status(), StatusCode::OK);
+    let replay_json = json_body(replay).await;
+    assert_eq!(replay_json["data"], first_json["data"]);
+    assert_eq!(replay_json["data"]["submissionId"], first_submission_id);
+
+    let idempotency_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM idempotency_keys
+        WHERE actor_id = $1
+          AND route_key = $2
+          AND idempotency_key = $3
+        "#,
+    )
+    .bind(student_key)
+    .bind(format!(
+        "POST:/api/v1/student/sessions/{}/submit",
+        schedule.id
+    ))
+    .bind("submit-replay-1")
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(idempotency_count, 1);
+
+    database.shutdown().await;
+}
+
+async fn bootstrap_attempt(
+    app: &axum::Router,
+    auth: &postgres::TestAuthContext,
+    schedule_id: Uuid,
+    candidate_id: &str,
+    student_key: &str,
+) -> (serde_json::Value, Uuid) {
+    let client_session_id = Uuid::new_v4();
+
+    // First do precheck to set up integrity with client_session_id
+    let precheck_response = app
+        .clone()
+        .oneshot(
+            auth.with_csrf(Request::builder())
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{schedule_id}/precheck"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentPrecheckRequest {
+                        student_key: student_key.to_owned(),
+                        candidate_id: candidate_id.to_owned(),
+                        candidate_name: format!("{candidate_id} Candidate"),
+                        candidate_email: format!("{candidate_id}@example.com"),
+                        client_session_id,
+                        pre_check: json!({
+                            "completedAt": "2026-01-10T08:50:00Z",
+                            "browserFamily": "chrome",
+                            "checks": [{"id": "browser", "status": "pass"}]
+                        }),
+                        device_fingerprint_hash: Some(format!("fp-{candidate_id}")),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(precheck_response.status(), StatusCode::OK);
+
+    // Then call bootstrap
+    let response = app
+        .clone()
+        .oneshot(
+            auth.with_csrf(Request::builder())
+                .method("POST")
+                .uri(format!("/api/v1/student/sessions/{schedule_id}/bootstrap"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&StudentBootstrapRequest {
+                        student_key: student_key.to_owned(),
+                        candidate_id: candidate_id.to_owned(),
+                        candidate_name: format!("{candidate_id} Candidate"),
+                        candidate_email: format!("{candidate_id}@example.com"),
+                        client_session_id,
+                    })
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    (json_body(response).await, client_session_id)
+}
+
+async fn create_student_auth(
+    pool: &sqlx::PgPool,
+    schedule_id: Uuid,
+    candidate_id: &str,
+) -> (postgres::TestAuthContext, String) {
+    let auth = postgres::create_authenticated_user(
+        pool,
+        UserRole::Student,
+        &format!("{candidate_id}@example.com"),
+        &format!("{candidate_id} Candidate"),
+    )
+    .await;
+    let student_key = postgres::create_student_registration(
+        pool,
+        schedule_id,
+        auth.user_id,
+        candidate_id,
+        &format!("{candidate_id} Candidate"),
+        &format!("{candidate_id}@example.com"),
+    )
+    .await;
+    (auth, student_key)
+}
+
+fn with_attempt_token(
+    builder: axum::http::request::Builder,
+    token: &str,
+) -> axum::http::request::Builder {
+    builder.header("authorization", format!("Bearer {token}"))
+}
+
+async fn seed_schedule(pool: &sqlx::PgPool) -> ielts_backend_domain::schedule::ExamSchedule {
+    let actor = contract_actor();
+    let builder_service = BuilderService::new(pool.clone());
+    let exam = builder_service
+        .create_exam(
+            &actor,
+            CreateExamRequest {
+                slug: "cambridge-19-academic-delivery".to_owned(),
+                title: "Cambridge 19 Academic Delivery".to_owned(),
+                exam_type: ExamType::Academic,
+                visibility: Visibility::Organization,
+                organization_id: Some("org-1".to_owned()),
+            },
+        )
+        .await
+        .expect("seed exam");
+
+    builder_service
+        .save_draft(
+            &actor,
+            exam.id,
+            SaveDraftRequest {
+                content_snapshot: json!({
+                    "reading": {"passages": [{"id": "reading-1"}]},
+                    "listening": {"parts": [{"id": "listening-1"}]},
+                    "writing": {"tasks": [{"id": "writing-1"}]},
+                    "speaking": {"part1Topics": ["topic"], "cueCard": "cue", "part3Discussion": ["discussion"]}
+                }),
+                config_snapshot: sample_delivery_config(),
+                revision: exam.revision,
+            },
+        )
+        .await
+        .expect("save draft");
+
+    let exam_after_draft = builder_service
+        .get_exam(&actor, exam.id)
+        .await
+        .expect("exam after draft");
+
+    let published_version = builder_service
+        .publish_exam(
+            &actor,
+            exam.id,
+            PublishExamRequest {
+                publish_notes: Some("ready for delivery".to_owned()),
+                revision: exam_after_draft.revision,
+            },
+        )
+        .await
+        .expect("publish exam");
+
+    let scheduling_service = SchedulingService::new(pool.clone());
+    let start_time = Utc.with_ymd_and_hms(2026, 1, 10, 9, 0, 0).unwrap();
+    let end_time = start_time + Duration::minutes(180);
+
+    scheduling_service
+        .create_schedule(
+            &actor,
+            CreateScheduleRequest {
+                exam_id: exam.id,
+                published_version_id: published_version.id,
+                cohort_name: "Delivery Cohort".to_owned(),
+                institution: Some("IELTS Centre".to_owned()),
+                start_time,
+                end_time,
+                auto_start: false,
+                auto_stop: false,
+            },
+        )
+        .await
+        .expect("create schedule")
+}
+
+fn sample_delivery_config() -> serde_json::Value {
+    json!({
+        "sections": {
+            "listening": {"enabled": true, "label": "Listening", "order": 1, "duration": 30, "gapAfterMinutes": 5},
+            "reading": {"enabled": true, "label": "Reading", "order": 2, "duration": 60, "gapAfterMinutes": 0},
+            "writing": {"enabled": true, "label": "Writing", "order": 3, "duration": 60, "gapAfterMinutes": 10},
+            "speaking": {"enabled": true, "label": "Speaking", "order": 4, "duration": 15, "gapAfterMinutes": 0}
+        }
+    })
+}
+
+async fn json_body(response: axum::response::Response) -> serde_json::Value {
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
+fn student_key(schedule_id: Uuid, candidate_id: &str) -> String {
+    format!("student-{schedule_id}-{candidate_id}")
+}
+
+fn contract_actor() -> ActorContext {
+    ActorContext::new(Uuid::new_v4(), ActorRole::Admin)
+}

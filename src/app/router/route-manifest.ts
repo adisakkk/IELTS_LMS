@@ -2,7 +2,7 @@
  * Route Manifest
  *
  * This manifest reflects the real active route tree. Student pre-check/lobby/exam/complete
- * are internal runtime phases inside `/student/:scheduleId`, not distinct child routes.
+ * are internal runtime phases inside `/student/:scheduleId/:studentId?`, not distinct child routes.
  */
 
 export const routeManifest = {
@@ -33,7 +33,8 @@ export const routeManifest = {
   student: {
     path: '/student',
     children: {
-      session: '/student/:scheduleId',
+      register: '/student/:scheduleId/register',
+      session: '/student/:scheduleId/:studentId?',
     },
   },
 } as const;

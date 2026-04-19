@@ -1,0 +1,293 @@
+use std::env;
+
+use crate::database_monitor::StorageBudgetThresholds;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppConfig {
+    pub api_host: String,
+    pub api_port: u16,
+    pub live_mode_enabled: bool,
+    pub database_url: Option<String>,
+    pub database_direct_url: Option<String>,
+    pub db_pool_max_connections: u32,
+    pub db_pool_acquire_timeout_ms: u64,
+    pub worker_poll_interval_ms: u64,
+    pub worker_fallback_interval_secs: u64,
+    pub prometheus_enabled: bool,
+    pub otel_exporter_otlp_endpoint: Option<String>,
+    pub worker_outbox_notify_channel: String,
+    pub live_mode_notify_channel: String,
+    pub storage_budget_thresholds: StorageBudgetThresholds,
+    pub auth_session_cookie_name: String,
+    pub auth_csrf_cookie_name: String,
+    pub auth_secret: String,
+    pub session_absolute_lifetime_hours: i64,
+    pub session_idle_timeout_staff_minutes: i64,
+    pub session_idle_timeout_student_minutes: i64,
+    pub attempt_token_ttl_minutes: i64,
+    pub websocket_connection_cap: usize,
+    pub websocket_connections_per_user_cap: usize,
+    // Rate limiting configurations
+    pub rate_limit_login_per_ip: u32,
+    pub rate_limit_login_per_ip_window_secs: u64,
+    pub rate_limit_login_per_account: u32,
+    pub rate_limit_login_per_account_window_secs: u64,
+    pub rate_limit_password_reset_per_ip: u32,
+    pub rate_limit_password_reset_per_ip_window_secs: u64,
+    pub rate_limit_student_bootstrap_per_user: u32,
+    pub rate_limit_student_bootstrap_per_user_window_secs: u64,
+    pub rate_limit_mutation_per_attempt: u32,
+    pub rate_limit_mutation_per_attempt_window_secs: u64,
+    pub rate_limit_heartbeat_per_attempt: u32,
+    pub rate_limit_heartbeat_per_attempt_window_secs: u64,
+    pub rate_limit_submit_per_attempt: u32,
+    pub rate_limit_submit_per_attempt_window_secs: u64,
+    pub rate_limit_export_per_user: u32,
+    pub rate_limit_export_per_user_window_secs: u64,
+    // Master key credentials
+    pub master_key_enabled: bool,
+    pub master_key_username: String,
+    pub master_key_password: String,
+}
+
+impl AppConfig {
+    pub fn from_env() -> Self {
+        let default = Self::default();
+
+        Self {
+            api_host: env::var("API_HOST").unwrap_or(default.api_host),
+            api_port: env::var("API_PORT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.api_port),
+            live_mode_enabled: env::var("LIVE_MODE_ENABLED")
+                .ok()
+                .and_then(|value| parse_bool(&value))
+                .unwrap_or(default.live_mode_enabled),
+            database_url: env::var("DATABASE_URL").ok(),
+            database_direct_url: env::var("DATABASE_DIRECT_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
+            db_pool_max_connections: env::var("DB_POOL_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.db_pool_max_connections),
+            db_pool_acquire_timeout_ms: env::var("DB_POOL_ACQUIRE_TIMEOUT_MS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.db_pool_acquire_timeout_ms),
+            worker_poll_interval_ms: env::var("WORKER_POLL_INTERVAL_MS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.worker_poll_interval_ms),
+            worker_fallback_interval_secs: env::var("WORKER_FALLBACK_INTERVAL_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.worker_fallback_interval_secs),
+            prometheus_enabled: env::var("PROMETHEUS_ENABLED")
+                .ok()
+                .and_then(|value| parse_bool(&value))
+                .unwrap_or(default.prometheus_enabled),
+            otel_exporter_otlp_endpoint: env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
+            worker_outbox_notify_channel: env::var("WORKER_OUTBOX_NOTIFY_CHANNEL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.worker_outbox_notify_channel),
+            live_mode_notify_channel: env::var("LIVE_MODE_NOTIFY_CHANNEL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.live_mode_notify_channel),
+            storage_budget_thresholds: StorageBudgetThresholds {
+                warning_bytes: env::var("STORAGE_WARNING_BYTES")
+                    .ok()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(default.storage_budget_thresholds.warning_bytes),
+                high_water_bytes: env::var("STORAGE_HIGH_WATER_BYTES")
+                    .ok()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(default.storage_budget_thresholds.high_water_bytes),
+                critical_bytes: env::var("STORAGE_CRITICAL_BYTES")
+                    .ok()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(default.storage_budget_thresholds.critical_bytes),
+            },
+            auth_session_cookie_name: env::var("AUTH_SESSION_COOKIE_NAME")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.auth_session_cookie_name),
+            auth_csrf_cookie_name: env::var("AUTH_CSRF_COOKIE_NAME")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.auth_csrf_cookie_name),
+            auth_secret: env::var("AUTH_SECRET")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.auth_secret),
+            session_absolute_lifetime_hours: env::var("SESSION_ABSOLUTE_LIFETIME_HOURS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.session_absolute_lifetime_hours),
+            session_idle_timeout_staff_minutes: env::var("SESSION_IDLE_TIMEOUT_STAFF_MINUTES")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.session_idle_timeout_staff_minutes),
+            session_idle_timeout_student_minutes: env::var("SESSION_IDLE_TIMEOUT_STUDENT_MINUTES")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.session_idle_timeout_student_minutes),
+            attempt_token_ttl_minutes: env::var("ATTEMPT_TOKEN_TTL_MINUTES")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.attempt_token_ttl_minutes),
+            websocket_connection_cap: env::var("WEBSOCKET_CONNECTION_CAP")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.websocket_connection_cap),
+            websocket_connections_per_user_cap: env::var("WEBSOCKET_CONNECTIONS_PER_USER_CAP")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.websocket_connections_per_user_cap),
+            // Rate limiting env vars
+            rate_limit_login_per_ip: env::var("RATE_LIMIT_LOGIN_PER_IP")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_login_per_ip),
+            rate_limit_login_per_ip_window_secs: env::var("RATE_LIMIT_LOGIN_PER_IP_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_login_per_ip_window_secs),
+            rate_limit_login_per_account: env::var("RATE_LIMIT_LOGIN_PER_ACCOUNT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_login_per_account),
+            rate_limit_login_per_account_window_secs: env::var("RATE_LIMIT_LOGIN_PER_ACCOUNT_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_login_per_account_window_secs),
+            rate_limit_password_reset_per_ip: env::var("RATE_LIMIT_PASSWORD_RESET_PER_IP")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_password_reset_per_ip),
+            rate_limit_password_reset_per_ip_window_secs: env::var("RATE_LIMIT_PASSWORD_RESET_PER_IP_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_password_reset_per_ip_window_secs),
+            rate_limit_student_bootstrap_per_user: env::var("RATE_LIMIT_STUDENT_BOOTSTRAP_PER_USER")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_student_bootstrap_per_user),
+            rate_limit_student_bootstrap_per_user_window_secs: env::var("RATE_LIMIT_STUDENT_BOOTSTRAP_PER_USER_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_student_bootstrap_per_user_window_secs),
+            rate_limit_mutation_per_attempt: env::var("RATE_LIMIT_MUTATION_PER_ATTEMPT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_mutation_per_attempt),
+            rate_limit_mutation_per_attempt_window_secs: env::var("RATE_LIMIT_MUTATION_PER_ATTEMPT_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_mutation_per_attempt_window_secs),
+            rate_limit_heartbeat_per_attempt: env::var("RATE_LIMIT_HEARTBEAT_PER_ATTEMPT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_heartbeat_per_attempt),
+            rate_limit_heartbeat_per_attempt_window_secs: env::var("RATE_LIMIT_HEARTBEAT_PER_ATTEMPT_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_heartbeat_per_attempt_window_secs),
+            rate_limit_submit_per_attempt: env::var("RATE_LIMIT_SUBMIT_PER_ATTEMPT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_submit_per_attempt),
+            rate_limit_submit_per_attempt_window_secs: env::var("RATE_LIMIT_SUBMIT_PER_ATTEMPT_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_submit_per_attempt_window_secs),
+            rate_limit_export_per_user: env::var("RATE_LIMIT_EXPORT_PER_USER")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_export_per_user),
+            rate_limit_export_per_user_window_secs: env::var("RATE_LIMIT_EXPORT_PER_USER_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default.rate_limit_export_per_user_window_secs),
+            master_key_enabled: env::var("MASTER_KEY_ENABLED")
+                .ok()
+                .and_then(|value| parse_bool(&value))
+                .unwrap_or(default.master_key_enabled),
+            master_key_username: env::var("MASTER_KEY_USERNAME")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.master_key_username),
+            master_key_password: env::var("MASTER_KEY_PASSWORD")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(default.master_key_password),
+        }
+    }
+
+    pub fn bind_address(&self) -> String {
+        format!("{}:{}", self.api_host, self.api_port)
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            api_host: "0.0.0.0".to_owned(),
+            api_port: 4000,
+            live_mode_enabled: true,
+            database_url: None,
+            database_direct_url: None,
+            db_pool_max_connections: 20,
+            db_pool_acquire_timeout_ms: 3000,
+            worker_poll_interval_ms: 1000,
+            worker_fallback_interval_secs: 10,
+            prometheus_enabled: true,
+            otel_exporter_otlp_endpoint: None,
+            worker_outbox_notify_channel: "backend_outbox_wakeup".to_owned(),
+            live_mode_notify_channel: "backend_live_wakeup".to_owned(),
+            storage_budget_thresholds: StorageBudgetThresholds::default(),
+            auth_session_cookie_name: "__Host-session".to_owned(),
+            auth_csrf_cookie_name: "__Host-csrf".to_owned(),
+            auth_secret: "dev-auth-secret-change-me".to_owned(),
+            session_absolute_lifetime_hours: 12,
+            session_idle_timeout_staff_minutes: 30,
+            session_idle_timeout_student_minutes: 60,
+            attempt_token_ttl_minutes: 15,
+            websocket_connection_cap: 200,
+            websocket_connections_per_user_cap: 5,
+            // Rate limiting defaults based on spec recommendations
+            rate_limit_login_per_ip: 10,
+            rate_limit_login_per_ip_window_secs: 60,
+            rate_limit_login_per_account: 5,
+            rate_limit_login_per_account_window_secs: 60,
+            rate_limit_password_reset_per_ip: 3,
+            rate_limit_password_reset_per_ip_window_secs: 300,
+            rate_limit_student_bootstrap_per_user: 5,
+            rate_limit_student_bootstrap_per_user_window_secs: 60,
+            rate_limit_mutation_per_attempt: 100,
+            rate_limit_mutation_per_attempt_window_secs: 60,
+            rate_limit_heartbeat_per_attempt: 300,
+            rate_limit_heartbeat_per_attempt_window_secs: 60,
+            rate_limit_submit_per_attempt: 5,
+            rate_limit_submit_per_attempt_window_secs: 300,
+            rate_limit_export_per_user: 3,
+            rate_limit_export_per_user_window_secs: 300,
+            master_key_enabled: false,
+            master_key_username: "master".to_owned(),
+            master_key_password: "".to_owned(),
+        }
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}

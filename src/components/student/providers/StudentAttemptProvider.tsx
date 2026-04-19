@@ -47,6 +47,8 @@ interface StudentAttemptActions {
     type: HeartbeatEventType,
     payload?: Record<string, unknown>,
   ) => Promise<void>;
+  acknowledgeProctorWarning: (warningId: string) => Promise<void>;
+  submitAttempt: () => Promise<void>;
   setDeviceFingerprintHash: (hash: string) => Promise<void>;
   flushPending: () => Promise<boolean>;
 }
@@ -287,6 +289,13 @@ export function StudentAttemptProvider({
       return;
     }
 
+    if (
+      attemptRef.current?.id === attemptSnapshot.id &&
+      pendingMutationsRef.current.length > 0
+    ) {
+      return;
+    }
+
     attemptRef.current = attemptSnapshot;
     setAttempt(attemptSnapshot);
     observedRef.current = createObservedSnapshot(attemptSnapshot);
@@ -331,50 +340,28 @@ export function StudentAttemptProvider({
       }),
     };
 
-    const changedAreas: StudentAttemptMutationType[] = [];
     const objectivePatch: AttemptPatch = {};
-
-    if (nextObserved.answers !== observedRef.current.answers) {
-      objectivePatch.answers = runtimeState.answers;
-      changedAreas.push('answer');
-    }
-
-    if (nextObserved.flags !== observedRef.current.flags) {
-      objectivePatch.flags = runtimeState.flags;
-      changedAreas.push('flag');
-    }
 
     if (nextObserved.violations !== observedRef.current.violations) {
       objectivePatch.violations = runtimeState.violations;
-      changedAreas.push('violation');
     }
 
     if (nextObserved.position !== observedRef.current.position) {
       objectivePatch.phase = runtimeState.phase;
       objectivePatch.currentModule = runtimeState.currentModule;
       objectivePatch.currentQuestionId = runtimeState.currentQuestionId;
-      changedAreas.push('position');
     }
 
-    const writingChanged = nextObserved.writingAnswers !== observedRef.current.writingAnswers;
-
-    if (changedAreas.length > 0) {
-      void applyPatch(objectivePatch, changedAreas[changedAreas.length - 1]!, 400, {
-        changedAreas,
+    if (nextObserved.violations !== observedRef.current.violations) {
+      void applyPatch(objectivePatch, 'violation', 400, {
+        changedAreas: ['violation'],
       });
     }
 
-    if (writingChanged) {
-      void applyPatch(
-        {
-          writingAnswers: runtimeState.writingAnswers,
-        },
-        'writing_answer',
-        1_500,
-        {
-          changedAreas: ['writing_answer'],
-        },
-      );
+    if (nextObserved.position !== observedRef.current.position) {
+      void applyPatch(objectivePatch, 'position', 400, {
+        changedAreas: ['position'],
+      });
     }
 
     observedRef.current = nextObserved;
@@ -409,7 +396,7 @@ export function StudentAttemptProvider({
       },
       'answer',
       400,
-      { questionId },
+      { questionId, value: answer },
     );
   }, [applyPatch]);
 
@@ -422,7 +409,7 @@ export function StudentAttemptProvider({
       },
       'writing_answer',
       1_500,
-      { taskId },
+      { taskId, value: text },
     );
   }, [applyPatch]);
 
@@ -435,7 +422,7 @@ export function StudentAttemptProvider({
       },
       'flag',
       400,
-      { questionId, flagged },
+      { questionId, value: flagged },
     );
   }, [applyPatch]);
 
@@ -569,6 +556,43 @@ export function StudentAttemptProvider({
     );
   }, [applyPatch]);
 
+  const acknowledgeProctorWarning = useCallback(async (warningId: string) => {
+    const currentAttempt = attemptRef.current;
+    if (!currentAttempt || currentAttempt.lastAcknowledgedWarningId === warningId) {
+      return;
+    }
+
+    const nextAttempt = mergeAttempt(currentAttempt, {
+      lastAcknowledgedWarningId: warningId,
+      proctorStatus:
+        currentAttempt.proctorStatus === 'warned' ? 'active' : currentAttempt.proctorStatus,
+      proctorUpdatedAt: new Date().toISOString(),
+      proctorUpdatedBy: 'Candidate',
+    });
+
+    await studentAttemptRepository.saveAttempt(nextAttempt);
+    syncAttemptState(nextAttempt);
+    await saveStudentAuditEvent(
+      scheduleId,
+      'ALERT_ACKNOWLEDGED',
+      {
+        warningId,
+      },
+      currentAttempt.id,
+    );
+  }, [scheduleId, syncAttemptState]);
+
+  const submitAttempt = useCallback(async () => {
+    const currentAttempt = attemptRef.current;
+    if (!currentAttempt) {
+      return;
+    }
+
+    const submittedAttempt = await studentAttemptRepository.submitAttempt(currentAttempt);
+    runtimeActions.setPhase('post-exam');
+    syncAttemptState(submittedAttempt);
+  }, [runtimeActions, syncAttemptState]);
+
   const setDeviceFingerprintHash = useCallback(async (hash: string) => {
     await applyPatch(
       {
@@ -601,10 +625,13 @@ export function StudentAttemptProvider({
       recordPreCheckResult,
       recordNetworkStatus,
       recordHeartbeat,
+      acknowledgeProctorWarning,
+      submitAttempt,
       setDeviceFingerprintHash,
       flushPending,
     },
   }), [
+    acknowledgeProctorWarning,
     attempt,
     flushPending,
     pendingMutationCount,
@@ -616,6 +643,7 @@ export function StudentAttemptProvider({
     recordHeartbeat,
     recordNetworkStatus,
     recordPreCheckResult,
+    submitAttempt,
     setDeviceFingerprintHash,
   ]);
 
